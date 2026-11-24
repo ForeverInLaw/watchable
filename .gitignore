@@ -11,6 +11,7 @@ captures/
 .cxx/
 
 # Xcode
+watch/*.xcodeproj/
 DerivedData/
 build/
 *.xcuserstate
@@ -26,6 +27,7 @@ __pycache__/
 .mypy_cache/
 
 # Secrets and local config
+secrets/
 .env
 .env.*
 !.env.example

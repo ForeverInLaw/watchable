@@ -1,0 +1,40 @@
+# Unsigned build of the watch app on every PR that touches watch/ (TZ §12.3);
+# other PRs skip it to spare the scarce macOS runners.
+# Signing and TestFlight upload on main belong to a separate job (ADR 0004).
+name: watch
+
+on:
+  pull_request:
+    paths:
+      - watch/**
+      - .github/workflows/watch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: watch
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned: the project is generated on every run, so a new XcodeGen could change it.
+      - name: Generate Xcode project
+        env:
+          XCODEGEN_VERSION: 2.48.0
+        run: |
+          curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o "$RUNNER_TEMP/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+
+      # Building the iOS wrapper also builds and embeds the watch app.
+      - name: Build
+        run: |
+          xcodebuild -project PersonalWatch.xcodeproj -scheme PersonalWatch \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

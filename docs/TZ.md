@@ -839,6 +839,8 @@ android/
 - HealthKit.
 - WidgetKit (v1.1).
 - URLSession.
+- QR-код токена: SwiftPM-пакет `fwcd/swift-qrcode-generator` (MIT, чистый Swift; CoreImage на watchOS нет).
+- Проект: XcodeGen (`watch/project.yml`); `.xcodeproj` генерируется и не коммитится.
 - Тип: **watch-only/independent**; iOS companion не нужен. Xcode создаёт stub iOS wrapper только для упаковки и установки.
 
 ### 8.2 Структура
@@ -859,8 +861,9 @@ watch/
 
 ### 8.3 Lifecycle и push
 
-- `@WKExtensionDelegateAdaptor` → `registerForRemoteNotifications()`.
-- `didRegisterForRemoteNotificationsWithDeviceToken` → отправить на relay.
+- `@WKApplicationDelegateAdaptor` (один watch-таргет, без WatchKit extension) → `WKApplication.shared().registerForRemoteNotifications()` на каждом запуске.
+- `didRegisterForRemoteNotifications(withDeviceToken:)` → отправить на relay (в M0 — показать на экране как QR-код и hex-текст).
+- `userNotificationCenter(_:willPresent:)` возвращает `.banner`, `.list`, `.sound`, иначе пуш при открытом приложении не показывается.
 - `UNUserNotificationCenter.current().delegate`.
 - Запросить `.alert`, `.sound`, `.badge`.
 - Категории:
@@ -1148,7 +1151,7 @@ watch.example.com {
 
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`; relay `ruff`, `pytest`.
-  - macOS: `xcodebuild` для watch app без подписи — на каждом PR.
+  - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/` или сам workflow. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main` и теги (ADR 0004).
 - Подписывающие секреты (сертификат distribution, provisioning profile, App Store Connect API key) — только в GitHub Actions secrets.
 - Workflow с секретами не запускается на `pull_request` из форков.
