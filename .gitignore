@@ -11,6 +11,7 @@ captures/
 .cxx/
 
 # Xcode
+watch/*.xcodeproj/
 DerivedData/
 build/
 *.xcuserstate

@@ -1,0 +1,51 @@
+# XcodeGen spec. The .xcodeproj is generated from this file and not committed:
+#   cd watch && xcodegen generate
+name: PersonalWatch
+
+options:
+  developmentLanguage: ru
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+
+settings:
+  base:
+    # The only place the bundle id lives. Must match the App ID registered in
+    # Apple Developer; the watch app id (APNs topic) is this plus ".watchkitapp".
+    APP_BUNDLE_ID: io.github.foreverinlaw.personalwatch
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: YES
+
+packages:
+  QRCodeGenerator:
+    url: https://github.com/fwcd/swift-qrcode-generator
+    exactVersion: 2.0.2
+
+targets:
+  # Empty iOS wrapper Xcode requires to package and ship a watch-only app.
+  PersonalWatch:
+    type: application.watchapp2-container
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
+    dependencies:
+      - target: PersonalWatch Watch App
+    scheme: {}
+
+  PersonalWatch Watch App:
+    type: application
+    platform: watchOS
+    sources:
+      - PersonalWatch Watch App
+    dependencies:
+      - package: QRCodeGenerator
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).watchkitapp
+        CODE_SIGN_ENTITLEMENTS: PersonalWatch Watch App/PersonalWatch.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: PersonalWatch
+        INFOPLIST_KEY_WKWatchOnly: YES
+    scheme: {}
