@@ -21,10 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned: the project is generated on every run, so a new XcodeGen could change it.
       - name: Generate Xcode project
+        env:
+          XCODEGEN_VERSION: 2.48.0
         run: |
-          brew install xcodegen
-          xcodegen generate
+          curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o "$RUNNER_TEMP/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
 
       # Building the iOS wrapper also builds and embeds the watch app.
       - name: Build

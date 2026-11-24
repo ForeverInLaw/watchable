@@ -21,20 +21,22 @@ struct QRCodeView: View {
     var body: some View {
         Canvas { context, size in
             let modules = code.size + 2 * Self.quietZone
+            // Whole-point modules keep edges crisp; the leftover space is split evenly around the code.
             let side = (min(size.width, size.height) / CGFloat(modules)).rounded(.down)
+            let square = CGFloat(modules) * side
+            let origin = CGPoint(x: (size.width - square) / 2, y: (size.height - square) / 2)
             var dark = Path()
             for y in 0..<code.size {
                 for x in 0..<code.size where code.getModule(x: x, y: y) {
                     dark.addRect(CGRect(
-                        x: CGFloat(x + Self.quietZone) * side,
-                        y: CGFloat(y + Self.quietZone) * side,
+                        x: origin.x + CGFloat(x + Self.quietZone) * side,
+                        y: origin.y + CGFloat(y + Self.quietZone) * side,
                         width: side,
                         height: side
                     ))
                 }
             }
-            let square = CGFloat(modules) * side
-            context.fill(Path(CGRect(x: 0, y: 0, width: square, height: square)), with: .color(.white))
+            context.fill(Path(CGRect(origin: origin, size: CGSize(width: square, height: square))), with: .color(.white))
             context.fill(dark, with: .color(.black))
         }
         .aspectRatio(1, contentMode: .fit)
