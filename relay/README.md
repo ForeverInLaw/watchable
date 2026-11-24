@@ -1,7 +1,8 @@
 # Relay
 
 Self-hosted relay between the Android companion and the watch app (`../docs/TZ.md` §9).
-So far it holds only the APNs client and a script that sends a test push with it.
+So far it holds only the APNs client and a script that sends a test push with it; the
+FastAPI app, SQLite storage, pairing, FCM, the outbox worker and Docker Compose follow §9.
 
 ## Test push
 

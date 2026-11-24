@@ -469,7 +469,7 @@ Relay:
 - `apns-push-type: alert`
 - `apns-priority: 10`
 - `apns-topic: <bundle id watch app>`
-- `apns-expiration`: момент отправки + TTL; TTL по умолчанию 3600 с — APNs хранит пуш, пока часы офлайн; TTL 0 — одна попытка доставки
+- `apns-expiration`: момент отправки + TTL; TTL по умолчанию 3600 с — APNs хранит пуш, пока часы офлайн; TTL 0 — APNs не хранит пуш и пробует доставить один раз
 - `apns-collapse-id: <notification_key>` только для обновлений
 - `apns-id`: UUID
 
@@ -973,7 +973,7 @@ watch/
 
 ### 9.3 APNs
 
-- `aioapns.APNsClient`.
+- `aioapns.APNs`.
 - Конфиг:
   - `APNS_KEY_PATH` — `.p8`;
   - `APNS_KEY_ID`;
@@ -1154,7 +1154,7 @@ watch.example.com {
 
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`.
-  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv и Python.
+  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/` или сам workflow. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main` и теги (ADR 0004).
 - Подписывающие секреты (сертификат distribution, provisioning profile, App Store Connect API key) — только в GitHub Actions secrets.
