@@ -1151,7 +1151,7 @@ watch.example.com {
 
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`; relay `ruff`, `pytest`.
-  - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
+  - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/` или сам workflow. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main` и теги (ADR 0004).
 - Подписывающие секреты (сертификат distribution, provisioning profile, App Store Connect API key) — только в GitHub Actions secrets.
 - Workflow с секретами не запускается на `pull_request` из форков.

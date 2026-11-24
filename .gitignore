@@ -27,6 +27,7 @@ __pycache__/
 .mypy_cache/
 
 # Secrets and local config
+secrets/
 .env
 .env.*
 !.env.example
