@@ -1,0 +1,55 @@
+# Android
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+google-services.json
+service-account*.json
+firebase-service-account*.json
+
+# Runtime data
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local agent instructions (not published)
+CLAUDE.md
+docs/agents/
+AGENTS.md
+.claude/
+.aislop/session.jsonl
