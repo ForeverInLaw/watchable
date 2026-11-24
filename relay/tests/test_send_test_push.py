@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,18 @@ def test_unreachable_apns_fails_with_one_line(capsys: pytest.CaptureFixture[str]
 
     assert exit_info.value.code == 1
     assert "APNs unreachable" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads files regardless of mode")
+def test_unreadable_key_file_names_the_variable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    key = tmp_path / "locked.p8"
+    key.write_text("key")
+    key.chmod(0)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([TOKEN, "--key-path", str(key)], connect=Connector())
+
+    assert exit_info.value.code == 2
+    assert "APNS_KEY_PATH" in capsys.readouterr().err

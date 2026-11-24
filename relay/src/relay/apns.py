@@ -1,11 +1,12 @@
 """APNs delivery of watch alerts: payload and headers per docs/TZ.md §5.5."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol, Self
 
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
-from pydantic import FilePath
+from pydantic import FilePath, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Notification category the watch app attaches its reply action to.
@@ -24,6 +25,16 @@ class ApnsSettings(BaseSettings):
     team_id: str
     topic: str
     use_sandbox: bool = False
+
+    @field_validator("key_path")
+    @classmethod
+    def key_is_readable(cls, path: Path) -> Path:
+        """Rejects an unreadable key here, so it fails like any other bad setting."""
+        try:
+            path.read_bytes()
+        except OSError as error:
+            raise ValueError(f"cannot read the key: {error.strerror}") from error
+        return path
 
 
 @dataclass(frozen=True, slots=True)
