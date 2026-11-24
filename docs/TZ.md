@@ -839,6 +839,8 @@ android/
 - HealthKit.
 - WidgetKit (v1.1).
 - URLSession.
+- QR-код токена: SwiftPM-пакет `fwcd/swift-qrcode-generator` (MIT, чистый Swift; CoreImage на watchOS нет).
+- Проект: XcodeGen (`watch/project.yml`); `.xcodeproj` генерируется и не коммитится.
 - Тип: **watch-only/independent**; iOS companion не нужен. Xcode создаёт stub iOS wrapper только для упаковки и установки.
 
 ### 8.2 Структура
