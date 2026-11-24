@@ -47,7 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument("--title", default="Test push")
     push.add_argument("--body", help="default: the send time, to measure delivery delay")
     push.add_argument("--source-package", default="relay.test", help="also the thread id")
-    push.add_argument("--replyable", action="store_true")
+    push.add_argument(
+        "--replyable",
+        action="store_true",
+        help="add the MESSAGE_REPLY category; the watch shows no reply action until it "
+        "registers that category (TZ §8.4)",
+    )
     push.add_argument(
         "--ttl",
         type=non_negative_int,
