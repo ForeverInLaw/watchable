@@ -1,6 +1,6 @@
 # Lint, typecheck and test the relay on every PR that touches relay/ (TZ §12.3).
 # Runs on push to main too: GitHub only shares caches from the default branch with PRs,
-# so main seeds the uv and Python caches that every new PR starts from.
+# so main seeds the uv cache that every new PR starts from.
 name: relay
 
 on:
@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ships Python 3.12, see the setup-uv note
     timeout-minutes: 10
     defaults:
       run:
@@ -33,18 +33,19 @@ jobs:
     env:
       UV_LOCKED: "1" # fail instead of silently re-resolving when uv.lock is stale
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Python comes from relay/.python-version; the cache is keyed on uv.lock.
+      # relay/.python-version asks for 3.12, which the runner image already has, so no Python
+      # is downloaded. The cache is keyed on uv.lock and pruned to wheels uv had to build:
+      # pre-built wheels download faster than they restore.
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.10"
           working-directory: relay
           enable-cache: true
           cache-dependency-glob: uv.lock
-          cache-python: true
           prune-cache: true
 
       - name: Install dependencies
