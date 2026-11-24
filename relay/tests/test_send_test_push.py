@@ -1,5 +1,9 @@
+from pathlib import Path
+
 import pytest
+from aioapns import NotificationRequest
 from aioapns.common import NotificationResult
+from aioapns.exceptions import MaxAttemptsExceeded
 
 from relay.apns import ApnsSender, ApnsSettings
 from relay.send_test_push import main
@@ -9,8 +13,10 @@ TOKEN = "a1b2"
 
 
 @pytest.fixture(autouse=True)
-def apns_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APNS_KEY_PATH", "secrets/AuthKey_ENV.p8")
+def apns_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    key = tmp_path / "AuthKey_ENV.p8"
+    key.write_text("not a real key: the fake client never signs")
+    monkeypatch.setenv("APNS_KEY_PATH", str(key))
     monkeypatch.setenv("APNS_KEY_ID", "ENVKEY")
     monkeypatch.setenv("APNS_TEAM_ID", "ENVTEAM")
     monkeypatch.setenv("APNS_TOPIC", "env.topic")
@@ -75,3 +81,28 @@ def test_missing_credential_names_the_variable(
 
     assert exit_info.value.code == 2
     assert "APNS_TEAM_ID" in capsys.readouterr().err
+
+
+def test_missing_key_file_names_the_variable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([TOKEN, "--key-path", str(tmp_path / "absent.p8")], connect=Connector())
+
+    assert exit_info.value.code == 2
+    assert "APNS_KEY_PATH" in capsys.readouterr().err
+
+
+class UnreachableClient:
+    """Behaves like aioapns.APNs after it has run out of connection attempts."""
+
+    async def send_notification(self, request: NotificationRequest) -> NotificationResult:
+        raise MaxAttemptsExceeded
+
+
+def test_unreachable_apns_fails_with_one_line(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([TOKEN], connect=lambda _settings: ApnsSender(UnreachableClient()))
+
+    assert exit_info.value.code == 1
+    assert "APNs unreachable" in capsys.readouterr().err

@@ -13,18 +13,22 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from aioapns.exceptions import MaxAttemptsExceeded
 from pydantic import ValidationError
 
 from relay.apns import AlertPush, ApnsSender, ApnsSettings, PushResult
 
 type Connect = Callable[[ApnsSettings], ApnsSender]
 
-# Parser destinations that map one-to-one onto ApnsSettings fields.
-CREDENTIAL_FIELDS = ("key_path", "key_id", "team_id", "topic", "use_sandbox")
-
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="send-test-push", description=__doc__.splitlines()[0])
+    summary, _, details = __doc__.partition("\n\n")
+    parser = argparse.ArgumentParser(
+        prog="send-test-push",
+        description=summary,
+        epilog=details,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("device_token", help="hex APNs device token shown by the watch app")
 
     credentials = parser.add_argument_group("APNs credentials", "Override the APNS_* variables.")
@@ -46,11 +50,18 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument("--replyable", action="store_true")
     push.add_argument(
         "--ttl",
-        type=int,
+        type=non_negative_int,
         default=3600,
         help="seconds APNs keeps the push while the watch is offline; 0 tries once",
     )
     return parser
+
+
+def non_negative_int(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"must be 0 or more, got {number}")
+    return number
 
 
 def main(argv: Sequence[str] | None = None, connect: Connect = ApnsSender.connect) -> int:
@@ -68,8 +79,8 @@ def main(argv: Sequence[str] | None = None, connect: Connect = ApnsSender.connec
 
     try:
         result = asyncio.run(send(connect, settings, args.device_token, push, args.ttl))
-    except OSError as error:
-        parser.error(f"cannot read the APNs key: {error}")
+    except MaxAttemptsExceeded:
+        parser.exit(1, f"{parser.prog}: APNs unreachable, see the aioapns log above\n")
 
     print(f"apns-id: {result.apns_id}")
     print(f"status:  {result.status}")
@@ -79,8 +90,11 @@ def main(argv: Sequence[str] | None = None, connect: Connect = ApnsSender.connec
 
 def load_settings(parser: argparse.ArgumentParser, args: argparse.Namespace) -> ApnsSettings:
     """Arguments win over APNS_* variables; a missing or invalid value exits with usage."""
+    # Parser destinations are named after the ApnsSettings fields they override.
     overrides = {
-        field: value for field in CREDENTIAL_FIELDS if (value := getattr(args, field)) is not None
+        field: value
+        for field in ApnsSettings.model_fields
+        if (value := getattr(args, field)) is not None
     }
     try:
         return ApnsSettings(**overrides)

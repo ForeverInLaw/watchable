@@ -1,11 +1,11 @@
 """APNs delivery of watch alerts: payload and headers per docs/TZ.md §5.5."""
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol, Self
 
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
+from pydantic import FilePath
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Notification category the watch app attaches its reply action to.
@@ -19,7 +19,7 @@ class ApnsSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="APNS_")
 
-    key_path: Path
+    key_path: FilePath
     key_id: str
     team_id: str
     topic: str
