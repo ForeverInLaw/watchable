@@ -10,7 +10,16 @@ xcodebuild -project PersonalWatch.xcodeproj -scheme PersonalWatch \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-There is no local Mac: CI builds every PR (`.github/workflows/watch.yml`).
+There is no local Mac: CI builds every PR that touches `watch/` unsigned, and a push to `main`, a `v1.2.3` tag or a
+manual run of the `watch` workflow signs the app and uploads it to TestFlight
+(`.github/workflows/watch.yml`, `../docs/TZ.md` §12.3). To try a branch on the watch before
+merging:
+
+```bash
+gh workflow run watch.yml --ref <branch>
+```
+
+The icon in `Assets.xcassets` is a placeholder.
 
 - `PersonalWatch` — empty iOS wrapper Xcode needs to package a watch-only app.
 - `PersonalWatch Watch App` — the app. The bundle id is set once, in `APP_BUNDLE_ID`

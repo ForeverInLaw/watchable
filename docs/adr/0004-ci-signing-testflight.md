@@ -1,6 +1,6 @@
 # Watch app is built, signed and shipped from GitHub Actions
 
-There is no local Mac, so the watch app is built on a GitHub Actions macOS runner, signed there with a distribution certificate and provisioning profile stored in GitHub Actions secrets, and uploaded to TestFlight with an App Store Connect API key. The paired iPhone installs it from TestFlight. The repository is public, so the signing workflow runs only on pushes to `main` and on tags, never on pull requests from forks.
+There is no local Mac, so the watch app is built on a GitHub Actions macOS runner, signed there with a distribution certificate and provisioning profile stored in GitHub Actions secrets, and uploaded to TestFlight with an App Store Connect API key. The paired iPhone installs it from TestFlight. The repository is public, so the signing job runs only on pushes to `main`, on tags and on a manual dispatch, which needs write access; never on pull requests, including those from forks.
 
 ## Consequences
 
