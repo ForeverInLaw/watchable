@@ -424,16 +424,37 @@ Relay:
 
 ### 5.3 Envelope
 
+Envelope оборачивает сообщения в транспортах, где нет пути и токена: FCM и BLE.
+
 ```json
 {
   "v": 1,
   "id": "018f...",
-  "type": "notification.event",
+  "type": "reply.execute",
   "sent_at": "2026-11-24T12:00:00Z",
   "device_id": "018f...",
   "payload": {}
 }
 ```
+
+- `v` — версия протокола; в HTTP её роль играет префикс `/v1`, и breaking change увеличивает оба.
+- `id` — UUID сообщения. Повторная отправка сохраняет его, и получатель по нему отбрасывает дубли; в FCM это `id` записи `outbox` (§9.5).
+- `type` — тип сообщения, например `reply.execute`.
+- `sent_at` — момент, когда отправитель передал сообщение в транспорт, RFC3339 UTC. Для FCM это время отправки relay, а не доменное время из `payload`.
+- `device_id` — устройство, на котором возникло сообщение; для Command это часы.
+- `payload` — тело сообщения этого `type`, например §5.6 для `reply.execute`.
+
+По транспортам:
+
+- **HTTP** — без envelope: тело запроса и ответа — сам объект эндпоинта без обёртки или ошибка из §5.1. Поля envelope задают:
+  - `v` — префикс пути `/v1`;
+  - `type` — метод и путь, например `POST /v1/events/notification`;
+  - `device_id` — устройство, которому выдан Bearer-токен; в теле его нет;
+  - `id` — заголовок `Idempotency-Key`; id сущностей (`event_id`, `reply_id`, `command_id`, `sample_id`) остаются в теле;
+  - `sent_at` — не нужен; доменное время лежит в теле (`posted_at`, `sent_at`, `at`).
+- **APNs** — без envelope: формат задаёт Apple (§5.5). Тип пуша задаёт `apns-push-type`, а событие — `event_id` в payload.
+- **FCM** — envelope в `data`. FCM принимает только строки, поэтому `v` передаётся как `"1"`, а `payload` — как JSON-строка (§9.4).
+- **BLE (v1.1)** — envelope передаётся как payload кадра (§5.11).
 
 ### 5.4 Notification event
 
@@ -509,10 +530,9 @@ Relay:
 }
 ```
 
-FCM-сообщение:
+FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 ```json
 {
-  "type": "reply.execute",
   "reply_id": "018f...",
   "event_id": "018f...",
   "notification_key": "0|com.whatsapp|...",
@@ -1020,7 +1040,14 @@ watch/
   {
     "message": {
       "token": "<fcm_token>",
-      "data": {"type":"reply.execute","payload":"{...}"},
+      "data": {
+        "v": "1",
+        "id": "018f...",
+        "type": "reply.execute",
+        "sent_at": "2026-11-24T12:00:06Z",
+        "device_id": "018f...",
+        "payload": "{...}"
+      },
       "android": {"priority":"high","ttl":"3600s"}
     }
   }
