@@ -15,7 +15,7 @@ struct PushTokenScreen: View {
             case .registered(let token):
                 VStack(spacing: 8) {
                     QRCodeView(text: token.hex)
-                    Text(token.hex)
+                    Text(token.groupedHex)
                         .font(.system(.footnote, design: .monospaced))
                 }
             case .failed(let message):

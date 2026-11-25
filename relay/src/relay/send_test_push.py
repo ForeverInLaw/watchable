@@ -29,7 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=details,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("device_token", help="hex APNs device token shown by the watch app")
+    parser.add_argument(
+        "device_token",
+        nargs="+",
+        help="hex APNs device token shown by the watch app, whole or in its groups",
+    )
 
     credentials = parser.add_argument_group("APNs credentials", "Override the APNS_* variables.")
     credentials.add_argument("--key-path", type=Path, help=".p8 auth key file")
@@ -82,8 +86,10 @@ def main(argv: Sequence[str] | None = None, connect: Connect = ApnsSender.connec
         replyable=args.replyable,
     )
 
+    # The groups may arrive as separate arguments or quoted as one; drop every space.
+    device_token = "".join(" ".join(args.device_token).split())
     try:
-        result = asyncio.run(send(connect, settings, args.device_token, push, args.ttl))
+        result = asyncio.run(send(connect, settings, device_token, push, args.ttl))
     except MaxAttemptsExceeded:
         parser.exit(1, f"{parser.prog}: APNs unreachable, see the aioapns log above\n")
 
