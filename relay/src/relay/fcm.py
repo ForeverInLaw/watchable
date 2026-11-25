@@ -103,7 +103,8 @@ class FcmResult:
 
 
 class FcmUnreachable(Exception):
-    """The relay could not reach FCM or Google's token endpoint; nothing was sent."""
+    """The relay got no answer from FCM, or no access token from Google. FCM may still have
+    taken a message whose answer was lost, such as on a read timeout."""
 
 
 def envelope(
@@ -136,7 +137,7 @@ class FcmSender:
     async def send(self, registration_token: str, data: Mapping[str, str]) -> FcmResult:
         """Delivers `data` at high priority: every message so far is one the user waits on.
 
-        Raises FcmUnreachable when FCM or the token endpoint cannot be reached.
+        Raises FcmUnreachable when FCM does not answer or Google gives no access token.
         """
         message = {
             "token": registration_token,
@@ -149,7 +150,8 @@ class FcmSender:
                 json={"message": message},
                 headers={"Authorization": f"Bearer {await self._tokens.get()}"},
             )
-        except (httpx2.HTTPError, google.auth.exceptions.TransportError) as error:
+        # GoogleAuthError covers an unreachable token endpoint and a refused service account.
+        except (httpx2.HTTPError, google.auth.exceptions.GoogleAuthError) as error:
             raise FcmUnreachable from error
         if response.status_code == 200:
             return FcmResult(status=200, error=None)

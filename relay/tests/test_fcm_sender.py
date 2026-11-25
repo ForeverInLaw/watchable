@@ -2,10 +2,12 @@
 
 from typing import Any
 
+import google.auth.exceptions
+import httpx2
 import pytest
 from google.oauth2 import service_account
 
-from relay.fcm import FCM_SCOPE, FcmResult, ServiceAccountTokens
+from relay.fcm import FCM_SCOPE, FcmResult, FcmSender, FcmUnreachable, ServiceAccountTokens
 from tests.conftest import FCM_ACCESS_TOKEN, FCM_PROJECT_ID, fcm_sender
 from tests.fakes import FakeFcmEndpoint, FakeTokenEndpoint, service_account_info
 
@@ -96,3 +98,28 @@ async def test_rejection_reports_the_fcm_error_code(
 
     assert result == FcmResult(status=404, error=error)
     assert not result.ok
+
+
+class RefusedTokens:
+    """An access token source whose service account Google no longer accepts."""
+
+    async def get(self) -> str:
+        raise google.auth.exceptions.RefreshError("invalid_grant")
+
+
+async def test_no_access_token_means_fcm_cannot_be_reached() -> None:
+    fcm = FakeFcmEndpoint()
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(fcm))
+    sender = FcmSender(http, RefusedTokens(), FCM_PROJECT_ID)
+
+    with pytest.raises(FcmUnreachable):
+        await sender.send("fcm-registration-token", DATA)
+    assert fcm.requests == []
+
+
+async def test_a_network_error_means_fcm_cannot_be_reached() -> None:
+    fcm = FakeFcmEndpoint()
+    fcm.error = httpx2.ReadTimeout("FCM did not answer")
+
+    with pytest.raises(FcmUnreachable):
+        await fcm_sender(fcm).send("fcm-registration-token", DATA)
