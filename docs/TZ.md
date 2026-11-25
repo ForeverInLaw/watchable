@@ -627,6 +627,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
 - `429 rate_limited` — retry с `Retry-After`.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
+- 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
 - FCM: `UNREGISTERED` — пометить токен; `QUOTA_EXCEEDED` — backoff.
 
