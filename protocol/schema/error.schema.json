@@ -10,9 +10,27 @@
       "required": ["code", "message", "retryable"],
       "properties": {
         "code": {
-          "description": "Stable machine-readable reason, such as invalid_request or duplicate.",
+          "description": "Stable machine-readable reason; §5.10 lists the codes and what a client does with each. A code missing from examples still passes, as the relay names other HTTP errors after their status phrase, such as method_not_allowed.",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "examples": [
+            "invalid_request",
+            "invalid_pairing_code",
+            "invalid_token",
+            "invalid_pairing_secret",
+            "forbidden",
+            "not_found",
+            "pairing_expired",
+            "duplicate",
+            "payload_too_large",
+            "rate_limited",
+            "internal_error",
+            "apns_rejected",
+            "apns_unavailable",
+            "fcm_token_missing",
+            "fcm_rejected",
+            "fcm_unavailable"
+          ]
         },
         "message": {
           "description": "For people and logs; never echoes request content.",

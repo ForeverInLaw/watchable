@@ -30,13 +30,20 @@ fun StatusBarNotification.toPostedNotification(appLabel: String?): PostedNotific
             Conversation(
                 title = style.conversationTitle?.toString(),
                 isGroup = style.isGroupConversation,
-                messages = style.messages.map { Message(sender = it.person?.name?.toString(), text = it.text?.toString()) },
+                messages = style.messages.map {
+                    Message(
+                        sender = it.person?.name?.toString(),
+                        text = it.text?.toString(),
+                        // MessagingStyle leaves the sender null for the user's messages; some apps pass the user instead.
+                        isFromUser = it.person == null || it.person == style.user,
+                    )
+                },
             )
         },
         actions = notification.actions.orEmpty().map { action ->
             PostedAction(
                 title = action.title?.toString(),
-                acceptsFreeText = action.remoteInputs.orEmpty().any { it.allowFreeFormInput },
+                acceptsFreeText = action.freeTextInput() != null,
             )
         },
     )

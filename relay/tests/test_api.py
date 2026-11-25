@@ -13,8 +13,8 @@ from httpx2 import Headers
 from relay.apns import ApnsSender
 from relay.app import create_app
 from relay.settings import RelaySettings
-from tests.conftest import EVENT, PAIR_START, Pair, bearer, error_of, post_event
-from tests.fakes import FakeApnsClient
+from tests.conftest import EVENT, PAIR_START, Pair, bearer, error_of, fcm_sender, post_event
+from tests.fakes import FakeApnsClient, FakeFcmEndpoint
 
 
 def test_healthz_reports_ok(client: TestClient) -> None:
@@ -176,11 +176,18 @@ def test_unknown_path_answers_in_the_error_shape(client: TestClient) -> None:
     assert error_of(response) == {"code": "not_found", "message": "Not Found", "retryable": False}
 
 
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_api_description_is_not_served(client: TestClient, path: str) -> None:
+    assert client.get(path).status_code == 404
+
+
 def test_unexpected_failure_is_retryable(
-    settings: RelaySettings, apns: FakeApnsClient, paired: Pair
+    settings: RelaySettings, apns: FakeApnsClient, fcm: FakeFcmEndpoint, paired: Pair
 ) -> None:
     apns.error = RuntimeError("boom")
-    app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
+    app = create_app(
+        settings, connect_apns=lambda: ApnsSender(apns), connect_fcm=lambda: fcm_sender(fcm)
+    )
 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = post_event(client, paired.android_token)
@@ -194,10 +201,12 @@ def test_unexpected_failure_is_retryable(
 
 
 def test_delivered_event_stays_delivered_after_restart(
-    settings: RelaySettings, apns: FakeApnsClient, paired: Pair
+    settings: RelaySettings, apns: FakeApnsClient, fcm: FakeFcmEndpoint, paired: Pair
 ) -> None:
     for expected in (202, 409):
-        app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
+        app = create_app(
+            settings, connect_apns=lambda: ApnsSender(apns), connect_fcm=lambda: fcm_sender(fcm)
+        )
         with TestClient(app) as client:
             assert post_event(client, paired.android_token).status_code == expected
 

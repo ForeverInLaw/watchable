@@ -32,7 +32,12 @@ data class Conversation(
     val messages: List<Message>,
 )
 
-data class Message(val sender: String?, val text: String?)
+data class Message(
+    val sender: String?,
+    val text: String?,
+    /** Sent by the user of the phone (MessagingStyle.user), not by the other side of the chat. */
+    val isFromUser: Boolean = false,
+)
 
 data class PostedAction(
     val title: String?,

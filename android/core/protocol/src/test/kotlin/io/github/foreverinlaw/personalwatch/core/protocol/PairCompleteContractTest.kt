@@ -13,6 +13,27 @@ class PairCompleteContractTest {
     }
 
     @Test
+    fun `a request with the FCM token encodes to the protocol example`() {
+        val request = PairCompleteRequest(
+            pairingCode = "48151623",
+            name = "Pixel 8",
+            fcmToken = "dQw4w9WgXcQ:APA91bHun4MxP5egoKMwt2KZFBaFUH-1RYqx",
+        )
+
+        assertEquals(
+            Json.parseToJsonElement(ProtocolFiles.example("pair-complete-request.fcm")),
+            Json.parseToJsonElement(ProtocolJson.encodeToString(request)),
+        )
+    }
+
+    @Test
+    fun `the push token request encodes to the protocol example`() {
+        val json = ProtocolJson.encodeToString(PushTokenRequest("573fbc335fd665296c6f0ab8c276ec5cc831270e332dfd8a2d31091eae0583b4"))
+
+        assertEquals(Json.parseToJsonElement(ProtocolFiles.example("push-token-request")), Json.parseToJsonElement(json))
+    }
+
+    @Test
     fun `a request without a name leaves the key out and passes the schema`() {
         val json = ProtocolJson.encodeToString(PairCompleteRequest(pairingCode = "00000042", name = null))
 

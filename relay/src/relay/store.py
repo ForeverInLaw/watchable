@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -25,6 +26,17 @@ class DeliveryStatus(StrEnum):
 
 # Characters of body the watch gets; the rest is fetched by id (§5.4).
 WATCH_BODY_LIMIT = 3000
+
+
+@dataclass(frozen=True, slots=True)
+class StoredEvent:
+    """What a reply needs of its event: where the Companion finds the notification and
+    whether it takes a reply."""
+
+    event_id: str
+    notification_key: str
+    source_package: str
+    replyable: bool
 
 
 class EventStore:
@@ -58,6 +70,27 @@ class EventStore:
             await connection.execute(
                 insert(notification_events).values(row).on_conflict_do_nothing()
             )
+
+    async def find(
+        self, event_id: str, android_device_id: str, now: datetime
+    ) -> StoredEvent | None:
+        """The event if `android_device_id` sent it and it has not expired by `now`; None
+        alike for an unknown, a foreign and an expired event, so none of them shows."""
+        query = select(
+            notification_events.c.id,
+            notification_events.c.notification_key,
+            notification_events.c.source_package,
+            notification_events.c.replyable,
+        ).where(
+            notification_events.c.id == event_id,
+            notification_events.c.android_device_id == android_device_id,
+            notification_events.c.expires_at > rfc3339(now),
+        )
+        async with self._engine.connect() as connection:
+            row = (await connection.execute(query)).first()
+        if row is None:
+            return None
+        return StoredEvent(row.id, row.notification_key, row.source_package, bool(row.replyable))
 
     async def was_pushed(self, event_id: str, watch_device_id: str) -> bool:
         """Whether APNs has already accepted this event's push to the watch."""

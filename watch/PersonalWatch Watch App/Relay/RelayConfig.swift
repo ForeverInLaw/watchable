@@ -6,11 +6,12 @@ struct RelayConfig: Sendable {
     let pairingSecret: String
 
     /// Nil when the build carries no usable URL or secret, so the app shows the relay as not configured.
+    /// Only HTTPS: the requests carry the device token and reply text, and ATS does not guard IP hosts.
     /// The relay only accepts a secret of printable ASCII without spaces, which also fits in a header.
     init?(bundle: Bundle = .main) {
         guard
             let url = (bundle.object(forInfoDictionaryKey: "RelayURL") as? String).flatMap(URL.init(string:)),
-            url.scheme == "https" || url.scheme == "http",
+            url.scheme == "https",
             url.host() != nil,
             let secret = bundle.object(forInfoDictionaryKey: "PairingSecret") as? String,
             !secret.isEmpty,

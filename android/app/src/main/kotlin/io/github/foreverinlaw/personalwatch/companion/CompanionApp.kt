@@ -10,21 +10,47 @@ import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.time.Instant
 
-/** Holds the app-wide objects the listener service and the screens share. */
+/** Holds the app-wide objects the services and the screens share. */
 class CompanionApp : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val relayStatus = RelayStatus()
+
+    /** Null when the build carries no Firebase options; set once in [onCreate]. */
+    var fcm: Fcm? = null
+        private set
+
+    val connectedShade = ConnectedShade()
+
+    /** Null when the build carries no usable relay URL, so there is no relay to take a result. */
+    val replies: ReplyCommands? by lazy {
+        val relay = relay ?: return@lazy null
+        ReplyCommands(ReplyCommandHandler(this, connectedShade::find)::execute, relay::postReplyResult)
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        fcm = Fcm.start(this) ?: return
+        // The token may have changed while the app was not running (TZ §7.5).
+        syncFcmToken()
+    }
+
+    /** Sends the relay the current FCM token if it changed; unpaired, pairing sends it instead. */
+    fun syncFcmToken() {
+        val relay = relay ?: return
+        scope.launch { Log.i(TAG, "FCM token update: ${relay.syncPushToken()}") }
+    }
 
     /** Null when the build carries no usable relay URL. */
     val relay: PairedRelay? by lazy {
         val url = BuildConfig.RELAY_URL.toHttpUrlOrNull() ?: return@lazy null
         // Under files/, which data_extraction_rules.xml keeps out of backup and device transfer.
         val store = PreferenceDataStoreFactory.create(scope = scope) { filesDir.resolve("datastore/pairing.preferences_pb") }
-        PairedRelay(RelayClient(url), store)
+        PairedRelay(RelayClient(url), store, fcmToken = { fcm?.token() })
     }
 
     val uploader: EventUploader? by lazy {

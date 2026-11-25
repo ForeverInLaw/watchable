@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reply result",
+  "description": "Body of POST /v1/replies/{reply_id}/result: what the Companion made of reply.execute (docs/TZ.md §5.6, §7.4). Only the Companion whose event the reply answers sends it, with its device token. The relay answers 204, 404 not_found for a reply_id it does not know for this Companion and 409 duplicate once the reply has a result or FCM refused it.",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "description": "sent once actionIntent.send() went through; failed when the reply could not be sent.",
+      "enum": ["sent", "failed"]
+    },
+    "error": {
+      "description": "Why a failed reply was not sent: notification_gone when the notification is no longer in the shade or the listener is not connected, remote_input_unsupported when no action takes free text.",
+      "enum": ["notification_gone", "remote_input_unsupported"]
+    }
+  },
+  "additionalProperties": false,
+  "if": { "properties": { "status": { "const": "failed" } } },
+  "then": { "required": ["error"] },
+  "else": { "not": { "required": ["error"] } }
+}

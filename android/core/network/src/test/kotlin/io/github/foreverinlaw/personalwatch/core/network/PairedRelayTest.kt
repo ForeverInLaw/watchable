@@ -3,6 +3,7 @@ package io.github.foreverinlaw.personalwatch.core.network
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
@@ -59,9 +60,13 @@ class PairedRelayTest {
     @After
     fun stop() = server.close()
 
+    /** What Firebase hands the Companion; null as in a build without Firebase. */
+    private var fcmToken: String? = null
+
     private fun TestScope.relay() = PairedRelay(
         client = RelayClient(server.url("/")),
         store = PreferenceDataStoreFactory.create(scope = backgroundScope) { folder.root.resolve("pairing.preferences_pb") },
+        fcmToken = { fcmToken },
     )
 
     private fun respond(code: Int, body: String) = server.enqueue(MockResponse.Builder().code(code).body(body).build())
@@ -154,5 +159,127 @@ class PairedRelayTest {
 
         assertEquals(RelayOutcome.Rejected(401, "invalid_token"), relay.postNotification(event))
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `a reply result goes out with the token from pairing`() = runTest {
+        val relay = relay()
+        respondPaired()
+        relay.pair(code = "48151623", name = null)
+        server.takeRequest()
+        respond(204, "")
+
+        assertEquals(RelayOutcome.Accepted(Unit), relay.postReplyResult(REPLY_ID, ReplyResult.Sent))
+        val request = server.takeRequest()
+        assertEquals("/v1/replies/$REPLY_ID/result", request.url.encodedPath)
+        assertEquals("Bearer ${credentials.androidDeviceToken}", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `a reply result refused for a revoked token unpairs the Companion`() = runTest {
+        val relay = relay()
+        respondPaired()
+        relay.pair(code = "48151623", name = null)
+        respond(401, """{"error":{"code":"invalid_token","message":"m","retryable":false}}""")
+
+        assertEquals(RelayOutcome.Rejected(401, "invalid_token"), relay.postReplyResult(REPLY_ID, ReplyResult.Sent))
+        assertNull(relay.credentials.first())
+    }
+
+    @Test
+    fun `pairing sends the FCM token`() = runTest {
+        val relay = relay()
+        fcmToken = "fcm-1"
+        respondPaired()
+
+        relay.pair(code = "48151623", name = null)
+
+        assertEquals(
+            """{"pairing_code":"48151623","fcm_token":"fcm-1","platform":"android"}""",
+            server.takeRequest().body?.utf8(),
+        )
+    }
+
+    /** Pairs with [fcmToken] and takes the pairing request off the server. */
+    private suspend fun PairedRelay.pairWithFcmToken() {
+        respondPaired()
+        pair(code = "48151623", name = null)
+        server.takeRequest()
+    }
+
+    @Test
+    fun `a new FCM token goes to the relay with the device token`() = runTest {
+        val relay = relay()
+        fcmToken = "fcm-1"
+        relay.pairWithFcmToken()
+        respond(204, "")
+        fcmToken = "fcm-2"
+
+        assertEquals(RelayOutcome.Accepted(Unit), relay.syncPushToken())
+        val request = server.takeRequest()
+        assertEquals("/v1/devices/${credentials.androidDeviceId}/push-token", request.url.encodedPath)
+        assertEquals("Bearer ${credentials.androidDeviceToken}", request.headers["Authorization"])
+        assertEquals("""{"push_token":"fcm-2"}""", request.body?.utf8())
+    }
+
+    @Test
+    fun `the FCM token sent in pairing is not sent again`() = runTest {
+        val relay = relay()
+        fcmToken = "fcm-1"
+        relay.pairWithFcmToken()
+
+        assertEquals(RelayOutcome.Accepted(Unit), relay.syncPushToken())
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `an FCM token the relay took is not sent again`() = runTest {
+        val relay = relay()
+        relay.pairWithFcmToken()
+        respond(204, "")
+        fcmToken = "fcm-2"
+        relay.syncPushToken()
+
+        assertEquals(RelayOutcome.Accepted(Unit), relay.syncPushToken())
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `an FCM token the relay did not take is sent again`() = runTest {
+        val relay = relay()
+        relay.pairWithFcmToken()
+        respond(503, """{"error":{"code":"internal_error","message":"m","retryable":true}}""")
+        respond(204, "")
+        fcmToken = "fcm-1"
+
+        assertEquals(RelayOutcome.Retry(after = null), relay.syncPushToken())
+        assertEquals(RelayOutcome.Accepted(Unit), relay.syncPushToken())
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `an FCM token is not sent before pairing`() = runTest {
+        val relay = relay()
+        fcmToken = "fcm-1"
+
+        assertEquals(RelayOutcome.Rejected(401, "invalid_token"), relay.syncPushToken())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `token updates that overlap leave the relay with the current FCM token`() = runTest {
+        val relay = relay()
+        relay.pairWithFcmToken()
+        respond(204, "")
+        // Firebase refreshed the token after an update for the old one had been started.
+        fcmToken = "fcm-2"
+
+        listOf(launch { relay.syncPushToken() }, launch { relay.syncPushToken() }).joinAll()
+        assertEquals("""{"push_token":"fcm-2"}""", server.takeRequest().body?.utf8())
+        assertEquals(2, server.requestCount)
+    }
+
+    private companion object {
+        const val REPLY_ID = "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60"
     }
 }

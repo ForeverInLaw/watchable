@@ -4,6 +4,7 @@ An example is named `<schema>[.<variant>].json` and checked against
 `protocol/schema/<schema>.schema.json`. Schemas reference each other by file name.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ def test_example_passes_its_schema(example: Path) -> None:
 
 COMPANION_SCHEMA = "notification-event.schema.json"
 WATCH_SCHEMA = "notification-event-watch.schema.json"
+RESULT_SCHEMA = "reply-result.schema.json"
 COMPANION_EVENT: dict[str, Any] = load_json(
     SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json"
 )
@@ -72,6 +74,9 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"public_key": "k"}, "additionalProperties"),
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"pairing_code": "1234567"}, "pattern"),
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"platform": "watchos"}, "const"),
+        (RESULT_SCHEMA, {"status": "failed"}, "required"),
+        (RESULT_SCHEMA, {"status": "sent", "error": "notification_gone"}, "not"),
+        (RESULT_SCHEMA, {"status": "failed", "error": "timeout"}, "enum"),
     ],
     ids=[
         "companion: posted_at not in UTC",
@@ -89,12 +94,25 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         "pair complete: public_key",
         "pair complete: 7-digit code",
         "pair complete: not android",
+        "reply result: failed without error",
+        "reply result: sent with error",
+        "reply result: unknown error",
     ],
 )
 def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:
     errors = schema_validator(SOURCE_PROTOCOL_DIR, schema_file).iter_errors(event)
 
     assert keyword in {error.validator for error in errors}
+
+
+def test_fcm_envelope_payload_is_the_reply_execute_example() -> None:
+    """JSON Schema leaves the JSON text in payload unchecked; this decodes and checks it."""
+    envelope = load_json(SOURCE_PROTOCOL_DIR / "examples" / "fcm-envelope.reply-execute.json")
+    payload = json.loads(envelope["payload"])
+
+    schema_validator(SOURCE_PROTOCOL_DIR, "reply-execute.schema.json").validate(payload)
+    assert payload == load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-execute.json")
+    assert envelope["id"] == payload["reply_id"]
 
 
 def test_companion_event_carries_the_full_body() -> None:

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FCM envelope",
+  "description": "data of an FCM message from the relay to the Companion: the envelope of docs/TZ.md §5.3 with every value a string, since FCM data holds only strings (§9.4). payload is the JSON text of the object the schema of its type describes; contentSchema names that schema.",
+  "type": "object",
+  "required": ["v", "id", "type", "sent_at", "device_id", "payload"],
+  "properties": {
+    "v": {
+      "description": "Protocol version: the envelope v as a string.",
+      "const": "1"
+    },
+    "id": {
+      "description": "Message id; the Companion drops a message whose id it has already seen. Until the outbox (M6) it is the reply_id of reply.execute.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": { "enum": ["reply.execute"] },
+    "sent_at": {
+      "description": "When the relay handed the message to FCM; RFC3339 UTC.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "device_id": {
+      "description": "The device the message came from: the watch, for a reply.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "payload": {
+      "type": "string",
+      "contentMediaType": "application/json"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "reply.execute" } } },
+      "then": {
+        "properties": { "payload": { "contentSchema": { "$ref": "reply-execute.schema.json" } } }
+      }
+    }
+  ]
+}

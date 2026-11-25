@@ -5,6 +5,8 @@ import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteRequest
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
 import io.github.foreverinlaw.personalwatch.core.protocol.ProtocolJson
+import io.github.foreverinlaw.personalwatch.core.protocol.PushTokenRequest
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -15,45 +17,78 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** The relay's HTTP API (TZ §5.1); outcomes follow the retry rules of §5.10. */
-class RelayClient(baseUrl: HttpUrl) {
+/**
+ * The relay's HTTP API (TZ §5.1); outcomes follow the retry rules of §5.10.
+ * [replyResultTimeout] bounds a whole reply result request, as reply handling has 10 seconds (TZ §7.4).
+ */
+class RelayClient(
+    private val baseUrl: HttpUrl,
+    private val replyResultTimeout: Duration = 10.seconds,
+) {
     private val http = OkHttpClient()
-    private val notificationUrl = baseUrl.newBuilder().addPathSegments("v1/events/notification").build()
-    private val pairCompleteUrl = baseUrl.newBuilder().addPathSegments("v1/pair/complete").build()
+    private val notificationUrl = url("v1", "events", "notification")
+    private val pairCompleteUrl = url("v1", "pair", "complete")
 
     /**
      * Sends one event with the Companion's device [token]; the event id doubles as the idempotency
      * key, so a resend is recognized, and a duplicate means the relay already has the event.
      */
     suspend fun postNotification(token: String, event: NotificationEvent): RelayOutcome<Unit> {
-        val request = Request.Builder()
-            .url(notificationUrl)
-            .header("Authorization", "Bearer $token")
+        val request = authorizedPost(notificationUrl, token, ProtocolJson.encodeToString(event))
             .header("Idempotency-Key", event.eventId)
-            .post(ProtocolJson.encodeToString(event).toRequestBody(JSON))
             .build()
-        return when (val outcome = exchange(request) {}) {
-            is RelayOutcome.Rejected if outcome.status == HTTP_CONFLICT -> RelayOutcome.Accepted(Unit)
-            else -> outcome
-        }
+        return exchange(request) {}.duplicateAccepted()
+    }
+
+    /**
+     * Reports what became of reply [replyId] (TZ §5.6). The reply id doubles as the idempotency key,
+     * and a duplicate means the relay already has a result for the reply.
+     */
+    suspend fun postReplyResult(token: String, replyId: String, result: ReplyResult): RelayOutcome<Unit> {
+        val request = authorizedPost(url("v1", "replies", replyId, "result"), token, ProtocolJson.encodeToString(result))
+            .header("Idempotency-Key", replyId)
+            .build()
+        return exchange(request, replyResultTimeout) {}.duplicateAccepted()
     }
 
     /** Pairs with the watch showing the code; no bearer token, the code is the proof (TZ F1). */
     suspend fun completePairing(body: PairCompleteRequest): RelayOutcome<PairCompleteResponse> {
-        val request = Request.Builder()
-            .url(pairCompleteUrl)
-            .post(ProtocolJson.encodeToString(body).toRequestBody(JSON))
-            .build()
+        val request = post(pairCompleteUrl, ProtocolJson.encodeToString(body)).build()
         return exchange(request) { ProtocolJson.decodeFromString<PairCompleteResponse>(it) }
     }
 
-    /** Runs [request] and decodes a successful body with [decode]; a malformed one is rejected. */
-    private suspend fun <T> exchange(request: Request, decode: (String) -> T): RelayOutcome<T> = try {
+    /** Replaces the FCM token of device [deviceId], the Companion that holds [token] (TZ §5.2). */
+    suspend fun updatePushToken(token: String, deviceId: String, body: PushTokenRequest): RelayOutcome<Unit> {
+        val request = authorizedPost(url("v1", "devices", deviceId, "push-token"), token, ProtocolJson.encodeToString(body))
+            .build()
+        return exchange(request) {}
+    }
+
+    /** The relay URL of the path [segments], each one escaped. */
+    private fun url(vararg segments: String): HttpUrl =
+        baseUrl.newBuilder().apply { segments.forEach { addPathSegment(it) } }.build()
+
+    /** A POST of the protocol [json] to [url]. */
+    private fun post(url: HttpUrl, json: String): Request.Builder =
+        Request.Builder().url(url).post(json.toRequestBody(JSON))
+
+    /** A POST of [json] to [url] with the Companion's device [token]. */
+    private fun authorizedPost(url: HttpUrl, token: String, json: String): Request.Builder =
+        post(url, json).header("Authorization", "Bearer $token")
+
+    /**
+     * Runs [request] and decodes a successful body with [decode]; a malformed one is rejected.
+     * A call that outlasts [timeout] is cancelled and may be retried.
+     */
+    private suspend fun <T> exchange(request: Request, timeout: Duration? = null, decode: (String) -> T): RelayOutcome<T> = try {
         withContext(Dispatchers.IO) {
-            http.newCall(request).execute().use { response ->
+            val call = http.newCall(request)
+            if (timeout != null) call.timeout().timeout(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+            call.execute().use { response ->
                 if (response.isSuccessful) accepted(response, decode) else failure(response)
             }
         }
@@ -85,6 +120,10 @@ class RelayClient(baseUrl: HttpUrl) {
             else -> RelayOutcome.Rejected(response.code, error?.code)
         }
     }
+
+    /** A duplicate means an earlier attempt already got through. */
+    private fun RelayOutcome<Unit>.duplicateAccepted(): RelayOutcome<Unit> =
+        if (this is RelayOutcome.Rejected && status == HTTP_CONFLICT) RelayOutcome.Accepted(Unit) else this
 
     private companion object {
         val JSON = "application/json".toMediaType()

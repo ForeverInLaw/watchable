@@ -30,11 +30,11 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 /**
- * Notification access, relay configuration, pairing and how the relay took the last event.
+ * Notification access, relay and FCM configuration, pairing and how the relay took the last event.
  * [relay] is null when the build carries no relay URL; [onPair] opens code entry.
  */
 @Composable
-fun StatusScreen(relay: PairedRelay?, relayStatus: RelayStatus, onPair: () -> Unit) {
+fun StatusScreen(relay: PairedRelay?, fcmConfigured: Boolean, relayStatus: RelayStatus, onPair: () -> Unit) {
     val context = LocalContext.current
     // Re-read on every lifecycle change, so returning from the system settings shows the new state.
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
@@ -62,7 +62,13 @@ fun StatusScreen(relay: PairedRelay?, relayStatus: RelayStatus, onPair: () -> Un
         ListItem(
             headlineContent = { Text(stringResource(R.string.relay)) },
             supportingContent = {
-                Text(stringResource(if (relay != null) R.string.relay_configured else R.string.relay_not_configured))
+                Text(stringResource(if (relay != null) R.string.configured else R.string.not_configured))
+            },
+        )
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.fcm)) },
+            supportingContent = {
+                Text(stringResource(if (fcmConfigured) R.string.configured else R.string.not_configured))
             },
         )
         if (relay != null) {

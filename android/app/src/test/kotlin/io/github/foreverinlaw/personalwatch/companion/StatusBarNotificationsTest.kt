@@ -90,4 +90,26 @@ class StatusBarNotificationsTest {
 
         assertEquals(null, sbn.toPostedNotification(appLabel = null).groupKey)
     }
+
+    @Test
+    fun `messages by the MessagingStyle user are marked as the user's own`() {
+        val me = Person.Builder().setName("Me").build()
+        val notification = Notification.Builder(context, "chats")
+            .setStyle(
+                Notification.MessagingStyle(me)
+                    .addMessage("Home soon", 1_000, Person.Builder().setName("Dad").build())
+                    .addMessage("On my way", 2_000, null as Person?)
+                    .addMessage("See you", 3_000, me),
+            )
+            .build()
+        val sbn = StatusBarNotification(
+            "org.example.chat", "org.example.chat", 5, null, 10001, 0, 0,
+            notification, Process.myUserHandle(), 0,
+        )
+
+        assertEquals(
+            listOf(false, true, true),
+            sbn.toPostedNotification(appLabel = null).conversation?.messages?.map { it.isFromUser },
+        )
+    }
 }

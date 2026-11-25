@@ -8,7 +8,7 @@
     "pairing_code": { "$ref": "pair-start-response.schema.json#/$defs/pairing_code" },
     "platform": { "const": "android" },
     "fcm_token": {
-      "description": "FCM registration token; optional until FCM arrives in M3.",
+      "description": "FCM registration token the relay sends reply.execute to. Left out when the Companion has none yet, for example in a build without Firebase; it then follows through POST /v1/devices/{id}/push-token.",
       "type": "string",
       "minLength": 1
     },

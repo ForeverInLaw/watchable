@@ -170,10 +170,10 @@
 **Ответ:**
 1. Пользователь нажимает Reply на часах.
 2. Watch app отправляет `POST /v1/events/{id}/reply`.
-3. Relay ставит команду в очередь и отправляет FCM `reply.execute` на Android.
+3. Relay сохраняет ответ и в том же запросе отправляет FCM `reply.execute` на Android; очереди нет до outbox (M6).
 4. Companion находит исходное уведомление и применяет `RemoteInput`.
 5. Companion отправляет `POST /v1/replies/{id}/result`.
-6. Watch app показывает результат локально.
+6. Relay записывает результат в `replies` и в лог; на часы он не приходит.
 
 **Здоровье:**
 1. Watch app читает HealthKit.
@@ -192,7 +192,7 @@
 - APNs — единственный надёжный способ разбудить watch app в фоне и показать уведомление.
 - BLE в фоне ограничен пятью timely alerts в сутки; для потока уведомлений не подходит.
 - FCM — надёжная доставка команд на Android, когда экран выключен.
-- WebSocket — только dev-fallback; в production не основной транспорт.
+- WebSocket не используется: в Doze ему нужны foreground service, исключение из оптимизации батареи и heartbeat, а FCM ездит на общем соединении Play Services.
 
 ### 3.4 BLE (v1.1)
 
@@ -223,7 +223,7 @@ BLE не используется для основного потока уве�
 - Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов. Pairing-секрет Companion не нужен.
   - `pairing_code`
   - `platform=android`
-  - `fcm_token` — опционально, до FCM в M3
+  - `fcm_token` — регистрационный токен FCM, на который relay шлёт `reply.execute`; опционально: сборка без Firebase его не передаёт, а позже токен приходит через `POST /v1/devices/{id}/push-token` (§7.5). Без токена ответы с часов получают `503 fcm_token_missing`
   - `name` — опционально
 - Relay связывает устройства и возвращает:
   - `android_device_id`
@@ -251,6 +251,7 @@ BLE не используется для основного потока уве�
   - пропускать групповой summary, пока активно хотя бы одно дочернее уведомление его группы; summary без активных дочерних (некоторые приложения публикуют только его) отправляется с `is_group_summary: true`;
   - blocklist по package name;
   - дедуп: пока уведомление не снято, повторная публикация с тем же `notification_key` и тем же содержимым пропускается, сколько бы времени ни прошло. Содержимое — `title`, `body`, `subtext` после нормализации и, для MessagingStyle, отправители и тексты всех сообщений уведомления: новое сообщение с тем же текстом удлиняет список и отправляется. Новый текст под тем же ключом отправляется всегда. Когда уведомление снято, ключ забывается; когда слушатель подключается (запуск, обновление или перезапуск Companion), всё, что уже лежит в шторке, считается показанным, а остальные ключи забываются. Поэтому после обновления старые чаты на часы не приходят. Цена: сообщение, пришедшее, пока Companion не работал, само на часы не попадёт и появится только со следующим сообщением этого чата. Telegram на каждое новое сообщение перепубликует все свои активные уведомления без изменений, и без этого правила часы получали бы их снова (WATCH-13).
+  - эхо своего ответа: перепубликация MessagingStyle, в которой последнее сообщение отправил сам пользователь (`MessagingStyle.user`), пропускается. WhatsApp и Telegram так показывают ответ, отправленный через `RemoteInput`, и без этого правила пользователь получал бы на часы собственное сообщение. Правило касается любого ответа, из шторки телефона или с часов. Эхо всё равно запоминается как показанное содержимое для дедупа, поэтому следующее входящее сообщение сравнивается с ним и отправляется, даже если приложение убрало из уведомления историю до ответа. Уведомления без MessagingStyle правило не затрагивает.
 - Извлекать:
   - `packageName`, `applicationInfo.loadLabel`;
   - `title`, `text`, `bigText`, `subText`, `conversationTitle`;
@@ -287,23 +288,23 @@ BLE не используется для основного потока уве�
 - Если `replyable=true`, APNs payload содержит `category=MESSAGE_REPLY`.
 - Watch app регистрирует `UNNotificationCategory` с `UNTextInputNotificationAction`.
 - Пользователь вводит текст (dictation/scribble).
-- Watch app отправляет `POST /v1/events/{event_id}/reply`:
+- Watch app отправляет один `POST /v1/events/{event_id}/reply` с новым `reply_id` и таймаутом 10 секунд (§5.6):
   ```json
   {"reply_id":"uuid","text":"...","sent_at":"..."}
   ```
-- Relay сохраняет reply и отправляет FCM `reply.execute` на Android.
+- Часы работают по принципу fire and forget: без повторов, без очереди и без локального статуса «Отправлено» или «Ошибка». `reply_id` нужен, чтобы relay отбросил дубль.
+- Relay принимает ответ только на событие своего спаренного Companion с `replyable: true`, которое ещё не истекло (§5.6). Он сохраняет reply со статусом `queued`, синхронно отправляет FCM `reply.execute` на токен спаренного Android и отвечает `202`. Если FCM сообщение не принял, reply получает `failed` с причиной, а relay отвечает `503` (§5.10).
 - Companion:
-  - находит исходное `StatusBarNotification` по `notification_key`;
-  - проверяет `Notification.Action` с `RemoteInput`;
+  - отбрасывает повторное `reply.execute` с уже виденным `id` envelope;
+  - находит исходное `StatusBarNotification` в `activeNotifications` подключённого слушателя по `notification_key` (§7.4);
+  - берёт `Notification.Action` с `RemoteInput`, принимающим свободный текст;
   - собирает `Intent` с `RemoteInput.addResultsToIntent`;
   - вызывает `actionIntent.send()`;
   - отправляет результат `POST /v1/replies/{reply_id}/result`.
-- Если уведомление уже исчезло или RemoteInput не поддерживается:
-  - результат `failed` с кодом `notification_gone` / `remote_input_unsupported`;
-  - watch app показывает локальное уведомление «Не удалось отправить ответ».
-- Watch app оптимистично показывает «Отправлено» после HTTP 202; ошибка приходит отдельно.
+- Если уведомление уже исчезло, слушатель не подключён или RemoteInput не поддерживается, результат — `failed` с кодом `notification_gone` / `remote_input_unsupported`.
+- На часы о результате ничего не приходит: relay записывает статус в `replies` и в лог без текста ответа, чтобы было чем разбирать, почему ответ не дошёл.
 
-**Acceptance:** ответ из WhatsApp/Telegram/Signal появляется в чате; для приложения без RemoteInput показывается ошибка.
+**Acceptance:** ответ из WhatsApp/Telegram/Signal появляется в чате; ответ, который нельзя применить (уведомление снято, нет RemoteInput), оставляет на relay статус `failed`.
 
 ### F4. Health и сон
 
@@ -455,7 +456,7 @@ Envelope оборачивает сообщения в транспортах, г
 ```
 
 - `v` — версия протокола; в HTTP её роль играет префикс `/v1`, и breaking change увеличивает оба.
-- `id` — UUID сообщения. Повторная отправка сохраняет его, и получатель по нему отбрасывает дубли; в FCM это `id` записи `outbox` (§9.5).
+- `id` — UUID сообщения. Повторная отправка сохраняет его, и получатель по нему отбрасывает дубли. В FCM до outbox (M6) это `reply_id` для `reply.execute`: relay шлёт ровно одно FCM-сообщение на ответ и не повторяет его. С outbox это станет `id` записи `outbox` (§9.5).
 - `type` — тип сообщения, например `reply.execute`.
 - `sent_at` — момент, когда отправитель передал сообщение в транспорт, RFC3339 UTC. Для FCM это время отправки relay, а не доменное время из `payload`.
 - `device_id` — устройство, на котором возникло сообщение; для Command это часы.
@@ -551,6 +552,8 @@ Companion отправляет событие телом `POST /v1/events/notifi
 
 ### 5.6 Reply
 
+Схемы: `protocol/schema/reply-request.schema.json` — запрос, `reply-execute.schema.json` — `payload` FCM-сообщения, `fcm-envelope.schema.json` — envelope в FCM-виде.
+
 Запрос:
 ```json
 {
@@ -559,6 +562,18 @@ Companion отправляет событие телом `POST /v1/events/notifi
   "sent_at": "2026-11-24T12:00:05Z"
 }
 ```
+
+- `text` — не длиннее 800 символов: так envelope `reply.execute` влезает в 4096 байт FCM `data` (ключи и значения в UTF-8) даже из четырёхбайтовых символов. Relay ещё и меряет собранный envelope и отвечает `400 invalid_request`, если тот всё же больше, например из управляющих символов, которые JSON экранирует шестью байтами.
+- Не больше 30 ответов в минуту (§5.1), дальше `429 rate_limited` с `Retry-After`.
+
+Ответы relay на запрос:
+
+- `202` — FCM принял `reply.execute`, reply в `queued`.
+- `400 invalid_request` — тело не по схеме, событие без `replyable: true` или envelope не влезает в FCM.
+- `401 invalid_token` — не токен часов или у часов нет спаренного Companion.
+- `404 not_found` — среди событий спаренного Companion нет такого или оно истекло (7 дней). Событие другого устройства получает тот же ответ, что и неизвестное, поэтому ответ не выдаёт, какие `event_id` существуют.
+- `409 duplicate` — reply с этим `reply_id` уже есть, что бы с ним ни стало, и FCM повторно не уходит. Это касается и reply, упавшего с `fcm_unavailable`: FCM мог взять сообщение, а его ответ потеряться, и второе сообщение с тем же `reply_id` дало бы в чате два ответа.
+- `503 fcm_token_missing`, `503 fcm_rejected`, `503 fcm_unavailable` — FCM сообщение не принял; reply получает `failed` с этим кодом в `error` (§5.10).
 
 FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 ```json
@@ -571,7 +586,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 }
 ```
 
-Результат:
+Результат — `POST /v1/replies/{reply_id}/result`, схема `reply-result.schema.json`:
 ```json
 {"status":"sent"}
 ```
@@ -579,6 +594,11 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 ```json
 {"status":"failed","error":"remote_input_unsupported"}
 ```
+
+- `error` — `notification_gone` или `remote_input_unsupported` (§7.4), только при `failed`.
+- Принимается только с токеном Companion, чьё событие ответ получил. Чужой или неизвестный `reply_id` — `404 not_found`, тоже одинаково.
+- Relay переводит reply из `queued` в `sent` или `failed`, ставит `error` и `completed_at`, отвечает `204` и пишет запись в лог без текста ответа. Reply, упавший с `fcm_unavailable`, тоже принимает результат: FCM мог взять сообщение, а ответ FCM потеряться, например по таймауту чтения.
+- Результат для reply, у которого результат уже есть или который FCM отклонил, — `409 duplicate`; запись не меняется.
 
 ### 5.7 Health
 
@@ -637,9 +657,12 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
 - `429 rate_limited` — retry с `Retry-After` (в том числе `pair/start` сверх 10 в минуту); relay передаёт его в секундах, HTTP-дату не использует.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
+- `503 fcm_token_missing` — у спаренного Companion нет FCM-токена: он его не прислал, или FCM назвал прежний `UNREGISTERED`; не retry, Companion присылает новый токен (§7.5).
+- `503 fcm_rejected` — FCM отклонил сообщение, например `UNREGISTERED` или `INVALID_ARGUMENT`, или Google не принял service account relay; не retry.
+- `503 fcm_unavailable` — FCM недоступен или перегружен: нет связи с FCM или с выдачей токенов Google, `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429 или 5xx. Повтор может пройти, но только как новый reply: тот же `reply_id` получает `409 duplicate`. Часы ответы не повторяют (F3).
 - 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
-- FCM: `UNREGISTERED` — пометить токен; `QUOTA_EXCEEDED` — backoff.
+- FCM: `UNREGISTERED` — relay забывает FCM-токен Companion, если тот ещё не сменился; `QUOTA_EXCEEDED` и другие временные ошибки — `503 fcm_unavailable`; relay сам сообщение не повторяет.
 
 ### 5.11 BLE GATT (v1.1)
 
@@ -729,7 +752,7 @@ replies(
   watch_device_id TEXT NOT NULL,
   text TEXT NOT NULL,
   status TEXT NOT NULL,            -- queued | sent | failed
-  error TEXT,
+  error TEXT,                      -- fcm_token_missing | fcm_rejected | fcm_unavailable | notification_gone | remote_input_unsupported
   created_at TEXT NOT NULL,
   completed_at TEXT
 )
@@ -784,11 +807,12 @@ Retention:
 
 ### 6.2 Android (Room)
 
-- `NotificationEntity` — последние 200 событий для reply.
 - `HealthEntity` — здоровье.
 - `SettingsEntity` — blocklist.
 - DataStore — device id и device token из pairing (F1), в приватном хранилище приложения, исключённом из бэкапа (`dataExtractionRules`, §10). `EncryptedSharedPreferences` не используется: он задепрекейчен в `security-crypto` 1.1.0.
 - `PendingEventEntity` — очередь при офлайне.
+
+Исходное уведомление для reply берётся из `activeNotifications` слушателя (§7.4), поэтому `NotificationEntity` не нужен.
 
 ### 6.3 Watch app
 
@@ -837,7 +861,6 @@ android/
   - пропустить `FLAG_GROUP_SUMMARY`, если есть группа;
   - извлечь extras;
   - определить `replyable`;
-  - сохранить в Room;
   - поставить в очередь `EventUploader`.
 - `onNotificationRemoved(sbn)` — пометить событие удалённым; reply по нему невозможен.
 
@@ -851,21 +874,25 @@ android/
 
 `ReplyCommandHandler`:
 - вход: `reply.execute` из FCM.
-- найти `StatusBarNotification` в кэше по `notification_key`;
-- найти action с `RemoteInput`;
+- найти `StatusBarNotification` в `activeNotifications` подключённого `NotificationListenerService` по `notification_key` (`getActiveNotifications(keys)`); своего кэша и Room нет;
+- найти action с `RemoteInput`, принимающим свободный текст (`allowFreeFormInput`);
 - `Bundle results = new Bundle(); results.putCharSequence(remoteInput.getResultKey(), text);`
 - `Intent fillIn = new Intent(); RemoteInput.addResultsToIntent(remoteInputs, fillIn, results);`
 - `action.actionIntent.send(context, 0, fillIn);`
-- вернуть результат.
+- отправить результат `POST /v1/replies/{reply_id}/result` (§5.6) с токеном устройства; `409 duplicate` — успех.
 
-Если уведомление не найдено — `notification_gone`.
+Если уведомление не найдено или слушатель не подключён — `notification_gone`.
 Если action не найден — `remote_input_unsupported`.
-Таймаут — 10 секунд.
+Таймаут — 10 секунд: обработка идёт в `onMessageReceived` и заканчивается до выхода из него, а запрос результата отменяется через 10 секунд. Не уложился — результат не уходит, и reply на relay остаётся `queued`; таймауты результата — в M6.
+
+FCM может доставить сообщение повторно, поэтому `reply.execute` с уже виденным `id` envelope отбрасывается: без отправки ответа и без результата. Companion помнит последние 100 `id` в памяти процесса.
 
 ### 7.5 FCM
 
-`BridgeMessagingService : FirebaseMessagingService`:
-- `onNewToken` → `POST /v1/devices/{id}/push-token`.
+Firebase инициализируется вручную: `FirebaseOptions` собираются из `firebase.project_id`, `firebase.app_id`, `firebase.api_key` и `firebase.sender_id` в `local.properties`, как `relay.url` (`android/README.md`). Плагин `google-services` не подключается, `google-services.json` нет ни в репозитории, ни в CI. Без этих значений приложение собирается и показывает «FCM не настроен».
+
+`CompanionMessagingService : FirebaseMessagingService`:
+- FCM-токен уходит в `pair/complete`; `onNewToken` и запуск приложения, если токен сменился с последней отправки, → `POST /v1/devices/{id}/push-token`.
 - `onMessageReceived`:
   - `reply.execute` → `ReplyCommandHandler`;
   - `music.*` → `MusicCommandHandler`;
@@ -887,7 +914,7 @@ android/
 `BridgeForegroundService`:
 - постоянное уведомление «Watch Bridge подключён»;
 - тип `connectedDevice|dataSync`;
-- держит WebSocket (dev fallback) и BLE GATT server (v1.1);
+- держит BLE GATT server (v1.1);
 - перезапуск через `START_STICKY`;
 - `onTaskRemoved` — не убивать.
 
@@ -958,12 +985,11 @@ watch/
 
 ### 8.4 Ответы
 
-- `userNotificationCenter(_:didReceive:withCompletionHandler:)`.
-- Для `UNTextInputNotificationResponse`:
-  - взять `userText`;
-  - `POST /v1/events/{event_id}/reply`;
-  - показать локальный статус.
-- Если ошибка сети — сохранить в очередь и повторить.
+- `userNotificationCenter(_:didReceive:)`.
+- Для `UNTextInputNotificationResponse` действия категории `MESSAGE_REPLY`:
+  - взять `userText` и `event_id` из payload;
+  - отправить один `POST /v1/events/{event_id}/reply` с новым `reply_id`.
+- Fire and forget: без повторов, без очереди и без локального статуса; ошибка сети или отказ relay на часах не видны (F3).
 - Таймаут — 10 секунд.
 
 ### 8.5 HealthKit
@@ -1070,8 +1096,9 @@ watch/
 
 ### 9.4 FCM
 
-- Service account JSON.
+- Service account JSON: путь в `FCM_SERVICE_ACCOUNT_PATH`, проект в `FCM_PROJECT_ID`.
 - OAuth2 access token, кэш до истечения.
+- Отправка синхронно в обработчике `POST /v1/events/{id}/reply`, как APNs; outbox и worker — в M6.
 - HTTP v1:
   `POST https://fcm.googleapis.com/v1/projects/{project}/messages:send`
 - Сообщение:
@@ -1091,7 +1118,8 @@ watch/
     }
   }
   ```
-- Обработка `UNREGISTERED`, `QUOTA_EXCEEDED`.
+- Обработка ошибок (§5.10): нет FCM-токена — `503 fcm_token_missing`; `UNREGISTERED` — забыть токен, `503 fcm_rejected`; `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429, 5xx и нет связи с FCM или с выдачей токенов Google — `503 fcm_unavailable`; отказ Google принять service account и прочие отказы — `503 fcm_rejected`. В каждом случае reply получает `failed` с этим кодом.
+- Размер `data`: не больше 4096 байт вместе с ключами; relay проверяет его до отправки (§5.6).
 
 ### 9.5 Outbox worker
 
@@ -1124,6 +1152,7 @@ watch.example.com {
 - JSON logs.
 - `request_id`, `device_id`, `event_id`.
 - Не логировать `title/body/text`.
+- Судьба каждого ответа — строка логгера `relay.replies` с `reply_id`: передан в FCM, отказ FCM с его статусом и кодом, результат Companion.
 - `/healthz` — DB, APNs config, FCM config.
 - `/metrics` — Prometheus (опционально): events, pushes, errors, latency.
 
@@ -1132,7 +1161,8 @@ watch.example.com {
 ## 10. Безопасность и приватность
 
 - TLS 1.2+; HSTS; Caddy.
-- APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600.
+- APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600. Файл SQLite relay тоже 600: в нём текст уведомлений и ответов; relay создаёт его так и сужает права файла, созданного раньше.
+- Relay не отдаёт `/docs`, `/redoc` и `/openapi.json`: API описан в `protocol/`.
 - Device tokens — SHA-256 на сервере.
 - Pairing начинают только часы с pairing-секретом из сборки (§5.2). Остаточный риск: кто получит сборку из TestFlight и расшифрует её, достанет секрет и сможет перехватить pairing. Поэтому сборка не выкладывается в артефакты CI. При утечке сменить `PAIRING_SECRET` в `.env` relay и в GitHub secret, пересобрать часы и спарить заново. Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
 - HMAC для BLE обязателен; для HTTP — опционально.
@@ -1293,7 +1323,7 @@ watch.example.com {
 | watchOS background limits | APNs основной, backlog, summary |
 | Android OEM battery | Foreground service, инструкции, тесты |
 | Notification access policy | Личное использование, не Play Store |
-| FCM dependency | WebSocket fallback, документировать |
+| FCM dependency | Только FCM HTTP v1, без WebSocket fallback; результат каждого ответа в `replies` и в логе relay |
 | A2093 без LTE | Домашний Wi-Fi или точка доступа Android; предупреждать |
 | Нет локального Mac | Сборка и подпись в CI; цикл «push → TestFlight» долгий и без отладчика — держать watch-часть тонкой, логи слать на relay |
 | APNs 4 КБ | Обрезка + полный текст на relay |
@@ -1308,7 +1338,7 @@ watch.example.com {
 1. Подтвердить железо: iPhone, Android, платный Apple Developer. Mac — не нужен, сборка в GitHub Actions.
 2. MVP и порядок этапов подтверждены (v0.2).
 3. Хостинг relay: VPS/домен.
-4. FCM или WebSocket для команд на Android.
+4. ~~FCM или WebSocket для команд на Android.~~ Закрыт в M3: только FCM HTTP v1.
 5. Нужен ли ECG.
 6. Нужен ли BLE в MVP.
 7. Нужен ли Health Connect.

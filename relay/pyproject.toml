@@ -9,6 +9,8 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "alembic>=1.20.1",
     "fastapi>=0.165.0",
+    "google-auth[requests]>=2.63.1",
+    "httpx2>=2.16.2",
     "jsonschema>=4.26.0",
     "pydantic-settings>=2.16.3",
     # jsonschema checks the date-time format only when this is installed.
@@ -28,7 +30,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.16.2",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
@@ -51,3 +52,5 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
+# google-auth ships py.typed, but its service account constructors and errors carry no annotations.
+untyped_calls_exclude = ["google.auth.exceptions", "google.oauth2.service_account"]

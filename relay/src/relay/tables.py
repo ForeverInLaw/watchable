@@ -44,6 +44,21 @@ deliveries = Table(
     Index("ix_deliveries_status_next_attempt_at", "status", "next_attempt_at"),
 )
 
+replies = Table(
+    "replies",
+    metadata,
+    # The reply_id the watch generated.
+    Column("id", Text, primary_key=True),
+    Column("event_id", Text, ForeignKey("notification_events.id"), nullable=False),
+    Column("watch_device_id", Text, nullable=False),
+    Column("text", Text, nullable=False),
+    # A ReplyStatus value.
+    Column("status", Text, nullable=False),
+    Column("error", Text),
+    Column("created_at", Text, nullable=False),
+    Column("completed_at", Text),
+)
+
 devices = Table(
     "devices",
     metadata,

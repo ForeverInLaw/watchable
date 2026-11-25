@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "fcm_token_missing",
+    "message": "The Companion has no FCM token",
+    "retryable": false
+  }
+}

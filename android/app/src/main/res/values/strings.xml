@@ -6,8 +6,9 @@
     <string name="notification_access_missing">Не разрешён</string>
     <string name="grant_notification_access">Разрешить доступ</string>
     <string name="relay">Relay</string>
-    <string name="relay_configured">Настроен</string>
-    <string name="relay_not_configured">Не настроен</string>
+    <string name="configured">Настроен</string>
+    <string name="not_configured">Не настроен</string>
+    <string name="fcm">FCM</string>
     <string name="pairing">Pairing</string>
     <string name="pairing_paired">Спарено</string>
     <string name="pairing_unpaired">Не спарено</string>

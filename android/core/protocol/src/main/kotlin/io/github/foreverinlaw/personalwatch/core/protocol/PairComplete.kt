@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Body of `POST /v1/pair/complete` (TZ F1, protocol/schema/pair-complete-request.schema.json).
- * A null [name] is left out, as the schema has no null for it. `fcm_token` arrives with FCM in M3.
+ * A null [name] or [fcmToken] is left out, as the schema has no null for them.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -15,6 +15,8 @@ data class PairCompleteRequest(
     /** The 8 digits the watch shows. */
     @SerialName("pairing_code") val pairingCode: String,
     val name: String? = null,
+    /** Where the relay sends replies; null when Firebase is not configured or has no token yet. */
+    @SerialName("fcm_token") val fcmToken: String? = null,
 ) {
     @EncodeDefault
     val platform: String = "android"
@@ -28,3 +30,7 @@ data class PairCompleteResponse(
     @SerialName("android_device_token") val androidDeviceToken: String,
     @SerialName("watch_device_id") val watchDeviceId: String,
 )
+
+/** Body of `POST /v1/devices/{id}/push-token` (protocol/schema/push-token-request.schema.json): the new FCM token. */
+@Serializable
+data class PushTokenRequest(@SerialName("push_token") val pushToken: String)
