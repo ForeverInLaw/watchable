@@ -223,7 +223,7 @@ BLE не используется для основного потока уве�
 - Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов. Pairing-секрет Companion не нужен.
   - `pairing_code`
   - `platform=android`
-  - `fcm_token` — опционально, до FCM в M3
+  - `fcm_token` — регистрационный токен FCM, на который relay шлёт `reply.execute`; опционально: сборка без Firebase его не передаёт, а позже токен приходит через `POST /v1/devices/{id}/push-token` (§7.5). Без токена ответы с часов получают `503 fcm_token_missing`
   - `name` — опционально
 - Relay связывает устройства и возвращает:
   - `android_device_id`
