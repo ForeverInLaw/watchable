@@ -54,9 +54,8 @@ curl -i localhost:8000/v1/events/notification \
 
 The first post answers `202` and the paired watch gets the alert; the same `event_id`
 again answers `409 duplicate` without a second push. The status codes are listed in
-TZ §5.4. Pairing again revokes both earlier devices. The development database was
-created for the static M1 token and is not migrated: delete `data/relay.db` once
-before the first run.
+TZ §5.4. Pairing again revokes both earlier devices. Events stored before M2 carry
+placeholder device ids and are not migrated; delete `data/relay.db` once to start clean.
 
 ## Test push
 

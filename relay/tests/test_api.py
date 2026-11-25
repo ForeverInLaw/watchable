@@ -3,7 +3,6 @@
 import json
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 import pytest
 from aioapns.common import NotificationResult
@@ -13,9 +12,8 @@ from httpx2 import Headers, Response
 
 from relay.apns import ApnsSender
 from relay.app import create_app
-from relay.protocol import schema_validator
-from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
-from tests.conftest import EVENT, PAIR_START, Pair, bearer
+from relay.settings import RelaySettings
+from tests.conftest import EVENT, PAIR_START, Pair, bearer, error_of
 from tests.fakes import FakeApnsClient
 
 
@@ -41,17 +39,6 @@ def test_event_is_pushed_to_the_watch(
     assert request.device_token == PAIR_START["apns_token"]
     assert request.message["aps"]["alert"] == {"title": "WhatsApp · Alice", "body": "Привет"}
     assert request.message["event_id"] == EVENT["event_id"]
-
-
-ERROR_SCHEMA = schema_validator(SOURCE_PROTOCOL_DIR, "error.schema.json")
-
-
-def error_of(response: Response) -> dict[str, Any]:
-    """The §5.1 error object of `response`, checked against protocol/schema/error."""
-    body = response.json()
-    ERROR_SCHEMA.validate(body)
-    error: dict[str, Any] = body["error"]
-    return error
 
 
 def test_resent_event_is_not_pushed_twice(

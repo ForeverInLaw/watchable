@@ -19,15 +19,17 @@ from relay.database import connect_database, migrate
 from relay.devices import PUSH_TOKEN_SCHEMA, DeviceRegistry
 from relay.events import EVENT_SCHEMA
 from relay.intake import NotificationIntake
-from relay.pairing import PAIR_COMPLETE_SCHEMA, PAIR_START_SCHEMA, Pairing
+from relay.pairing import (
+    PAIR_COMPLETE_SCHEMA,
+    PAIR_START_SCHEMA,
+    PAIR_STARTS_PER_MINUTE,
+    Pairing,
+)
 from relay.protocol import BodyParser
 from relay.ratelimit import RateLimit
 from relay.routes import events, pairing
 from relay.settings import RelaySettings
 from relay.store import EventStore
-
-# pair/start calls the relay admits per minute, so codes cannot be cycled fast (§5.2).
-PAIR_STARTS_PER_MINUTE = 10
 
 health = APIRouter()
 
@@ -55,7 +57,7 @@ def create_app(
             pairing=Pairing(engine, clock, timedelta(seconds=settings.pairing_ttl_seconds)),
             pair_start_limit=RateLimit(PAIR_STARTS_PER_MINUTE, timedelta(minutes=1), clock),
             intake=NotificationIntake(
-                EventStore(engine, timedelta(days=settings.retention_days)), connect_apns()
+                EventStore(engine, timedelta(days=settings.retention_days)), connect_apns(), clock
             ),
             event_parser=BodyParser(protocol_dir, EVENT_SCHEMA),
             pair_start_parser=BodyParser(protocol_dir, PAIR_START_SCHEMA),

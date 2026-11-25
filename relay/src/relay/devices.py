@@ -103,7 +103,7 @@ class DeviceRegistry:
             await connection.execute(statement)
 
     async def paired_watch(self, android_device_id: str) -> PushTarget | None:
-        """The watch the Companion paired with, while neither is revoked."""
+        """The watch the Companion paired with, unless it is revoked or has no push token."""
         query = (
             select(devices.c.id, devices.c.push_token)
             .join(pairing_sessions, pairing_sessions.c.watch_device_id == devices.c.id)

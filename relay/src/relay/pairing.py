@@ -20,6 +20,8 @@ PAIR_COMPLETE_SCHEMA = "pair-complete-request.schema.json"
 CODE_DIGITS = 8
 # Wrong codes that burn the open session (§5.2).
 MAX_FAILED_ATTEMPTS = 5
+# pair/start calls the relay admits per minute, so codes cannot be cycled fast (§5.2).
+PAIR_STARTS_PER_MINUTE = 10
 
 
 class PairStartRequest(TypedDict):

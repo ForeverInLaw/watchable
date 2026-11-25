@@ -1,18 +1,19 @@
 """Notification intake: keep each event once and push it to the watch until APNs accepts."""
 
 import asyncio
-from datetime import UTC, datetime
 
 from relay.apns import DEFAULT_TTL_SECONDS, ApnsSender, PushResult
+from relay.clock import Clock
 from relay.devices import PushTarget
 from relay.events import NotificationEvent, alert_push
 from relay.store import EventStore
 
 
 class NotificationIntake:
-    def __init__(self, store: EventStore, sender: ApnsSender) -> None:
+    def __init__(self, store: EventStore, sender: ApnsSender, clock: Clock) -> None:
         self._store = store
         self._sender = sender
+        self._clock = clock
         # One intake at a time, so a resend racing the first push cannot push twice.
         # The relay runs as one process with one user, so the wait stays short.
         self._lock = asyncio.Lock()
@@ -28,13 +29,11 @@ class NotificationIntake:
         Raises ApnsUnreachable when APNs cannot be reached.
         """
         async with self._lock:
-            await self._store.add(event, android_device_id, datetime.now(UTC))
+            await self._store.add(event, android_device_id, self._clock())
             if await self._store.was_pushed(event["event_id"], watch.device_id):
                 return None
             result = await self._sender.send(
                 watch.push_token, alert_push(event), DEFAULT_TTL_SECONDS
             )
-            await self._store.record_push(
-                event["event_id"], watch.device_id, result, datetime.now(UTC)
-            )
+            await self._store.record_push(event["event_id"], watch.device_id, result, self._clock())
             return result

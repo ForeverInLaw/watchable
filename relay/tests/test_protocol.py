@@ -10,8 +10,10 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from relay.pairing import PAIR_COMPLETE_SCHEMA, PAIR_START_SCHEMA
 from relay.protocol import load_json, schema_validator
 from relay.settings import SOURCE_PROTOCOL_DIR
+from tests.conftest import PAIR_COMPLETE, PAIR_START
 
 SCHEMAS = sorted((SOURCE_PROTOCOL_DIR / "schema").glob("*.schema.json"))
 EXAMPLES = sorted((SOURCE_PROTOCOL_DIR / "examples").glob("*.json"))
@@ -45,12 +47,6 @@ COMPANION_EVENT: dict[str, Any] = load_json(
 )
 WATCH_EVENT: dict[str, Any] = load_json(
     SOURCE_PROTOCOL_DIR / "examples" / "notification-event-watch.truncated.json"
-)
-PAIR_START_SCHEMA = "pair-start-request.schema.json"
-PAIR_COMPLETE_SCHEMA = "pair-complete-request.schema.json"
-PAIR_START: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "pair-start-request.json")
-PAIR_COMPLETE: dict[str, Any] = load_json(
-    SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.json"
 )
 
 

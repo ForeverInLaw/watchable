@@ -11,7 +11,7 @@ from httpx2 import Response
 
 from relay.apns import ApnsSender
 from relay.app import create_app
-from relay.protocol import load_json
+from relay.protocol import load_json, schema_validator
 from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
 from tests.fakes import FakeApnsClient, FakeClock
 
@@ -45,6 +45,19 @@ def client(settings: RelaySettings, apns: FakeApnsClient, clock: FakeClock) -> I
     app = create_app(settings, connect_apns=lambda: ApnsSender(apns), clock=clock)
     with TestClient(app) as test_client:
         yield test_client
+
+
+def body_of(response: Response, schema: str) -> dict[str, Any]:
+    """The JSON body of `response`, checked against protocol/schema/<schema>.schema.json."""
+    body: dict[str, Any] = response.json()
+    schema_validator(SOURCE_PROTOCOL_DIR, f"{schema}.schema.json").validate(body)
+    return body
+
+
+def error_of(response: Response) -> dict[str, Any]:
+    """The §5.1 error object of `response`, checked against protocol/schema/error."""
+    error: dict[str, Any] = body_of(response, "error")["error"]
+    return error
 
 
 def bearer(token: str) -> dict[str, str]:
