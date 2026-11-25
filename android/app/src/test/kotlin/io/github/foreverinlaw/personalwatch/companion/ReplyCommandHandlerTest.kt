@@ -89,7 +89,7 @@ class ReplyCommandHandlerTest {
     fun `without a connected notification listener the notification is gone`() {
         val sbn = posted(action("Reply", "reply", RemoteInput.Builder("reply_text").build()))
 
-        val outcome = ReplyCommandHandler(context, ActiveNotifications()::find).execute(reply(sbn.key))
+        val outcome = ReplyCommandHandler(context, ConnectedShade()::find).execute(reply(sbn.key))
 
         assertEquals(ReplyResult.Failed(ReplyFailure.NOTIFICATION_GONE), outcome)
         assertEquals(emptyList<Intent>(), sentBroadcasts())

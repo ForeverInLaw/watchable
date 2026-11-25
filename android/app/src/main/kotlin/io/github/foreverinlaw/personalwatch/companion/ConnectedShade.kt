@@ -7,7 +7,7 @@ import android.service.notification.StatusBarNotification
  * The shade as the connected notification listener sees it, for replies that arrive over FCM
  * (TZ §7.4). Empty while the listener is not connected.
  */
-class ActiveNotifications {
+class ConnectedShade {
     @Volatile
     private var listener: NotificationListenerService? = null
 

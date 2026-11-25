@@ -14,7 +14,7 @@ class CompanionListenerService : NotificationListenerService() {
 
     /** The system can unbind the listener, for example after the app is updated (TZ §7.3). */
     override fun onListenerDisconnected() {
-        (application as CompanionApp).activeNotifications.disconnected(this)
+        (application as CompanionApp).connectedShade.disconnected(this)
         requestRebind(ComponentName(this, CompanionListenerService::class.java))
     }
 
@@ -33,7 +33,7 @@ class CompanionListenerService : NotificationListenerService() {
     }
 
     override fun onListenerConnected() {
-        (application as CompanionApp).activeNotifications.connected(this)
+        (application as CompanionApp).connectedShade.connected(this)
         pipeline.syncWithShade(activeNotifications.orEmpty().map { it.toPostedNotification(appLabel(it.packageName)) })
     }
 

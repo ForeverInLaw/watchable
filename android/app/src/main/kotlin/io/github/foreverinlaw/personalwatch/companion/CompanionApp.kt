@@ -24,12 +24,12 @@ class CompanionApp : Application() {
     var fcm: Fcm? = null
         private set
 
-    val activeNotifications = ActiveNotifications()
+    val connectedShade = ConnectedShade()
 
     /** Null when the build carries no usable relay URL, so there is no relay to take a result. */
     val replies: ReplyCommands? by lazy {
         val relay = relay ?: return@lazy null
-        ReplyCommands(ReplyCommandHandler(this, activeNotifications::find)::execute, relay::postReplyResult)
+        ReplyCommands(ReplyCommandHandler(this, connectedShade::find)::execute, relay::postReplyResult)
     }
 
     override fun onCreate() {
