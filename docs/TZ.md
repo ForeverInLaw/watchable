@@ -1156,7 +1156,12 @@ watch.example.com {
   - Linux: Android `assembleDebug`, `test`.
   - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/` или сам workflow. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
-  - macOS: подписанный archive и загрузка в TestFlight — только на push в `main` и теги (ADR 0004).
+  - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
+  - Номер сборки (`CURRENT_PROJECT_VERSION`) — `github.run_number` workflow `watch`; он растёт и на PR-запусках, поэтому в TestFlight номера идут с пропусками. Перезапуск уже выгруженного run App Store Connect отклонит как дубликат — нужен новый запуск.
+  - Версия (`MARKETING_VERSION`) берётся из `watch/project.yml`; тег `vX.Y.Z` переопределяет её на `X.Y.Z`. После релизного тега поднять версию в `project.yml`.
+  - Оба macOS-job используют Xcode 26.3 (`DEVELOPER_DIR`): App Store Connect принимает только сборки на SDK 26, а один Xcode гарантирует, что зелёный PR соберётся и при выгрузке.
+  - Подпись только в конфигурации Release: `CODE_SIGN_STYLE=Manual`, профили выбираются по UUID, которые CI читает из самих профилей; bundle id нигде, кроме `project.yml`, не повторяется.
+  - Watch app объявляет `ITSAppUsesNonExemptEncryption=NO` (только HTTPS), чтобы TestFlight не спрашивал про экспортный контроль на каждой сборке. Пересмотреть, если появится собственное шифрование.
 - Подписывающие секреты (сертификат distribution, provisioning profile, App Store Connect API key) — только в GitHub Actions secrets.
 - Workflow с секретами не запускается на `pull_request` из форков.
 - Ни один ключ, сертификат или профиль не коммитится в репозиторий.
