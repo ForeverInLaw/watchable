@@ -616,7 +616,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `404 not_found` — не retry.
 - `409 duplicate` — считать успехом.
 - `429 rate_limited` — retry с `Retry-After`.
-- `500/503` — retry.
+- `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
 - FCM: `UNREGISTERED` — пометить токен; `QUOTA_EXCEEDED` — backoff.
 
