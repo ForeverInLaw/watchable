@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from relay.clock import Clock
 from relay.devices import DeviceRegistry
-from relay.fcm import FcmSender, FcmUnreachable, envelope
+from relay.fcm import MAX_DATA_BYTES, FcmSender, FcmUnreachable, envelope, fits_fcm
 from relay.protocol import rfc3339
 from relay.store import EventStore, StoredEvent
 from relay.tables import replies
@@ -50,8 +50,9 @@ class UnknownEvent(Exception):
     """The paired Companion has sent no event with this id, or it has expired."""
 
 
-class NotReplyable(Exception):
-    """The event's notification has no action that takes a reply."""
+class InvalidReply(Exception):
+    """The reply cannot go out: the event takes no reply, or the text does not fit FCM.
+    The message says which, never the reply text."""
 
 
 class NoCompanion(Exception):
@@ -156,7 +157,7 @@ class ReplyDispatch:
     async def send(self, reply: ReplyRequest, event_id: str, watch_device_id: str) -> None:
         """Stores `reply` as queued and hands reply.execute to FCM.
 
-        Raises NoCompanion, UnknownEvent or NotReplyable before anything is stored,
+        Raises NoCompanion, UnknownEvent or InvalidReply before anything is stored,
         DuplicateReply when the reply_id is already stored, and Undelivered once the
         reply is stored as failed because FCM did not take it.
         """
@@ -169,7 +170,10 @@ class ReplyDispatch:
         if event is None:
             raise UnknownEvent
         if not event.replyable:
-            raise NotReplyable
+            raise InvalidReply("The event takes no reply")
+        message = reply_execute(reply, event, watch_device_id, now)
+        if not fits_fcm(message):
+            raise InvalidReply(f"The reply does not fit {MAX_DATA_BYTES} bytes of FCM data")
         if not await self._store.add(reply, event_id, watch_device_id, now):
             raise DuplicateReply
         reply_id = reply["reply_id"]
@@ -178,9 +182,7 @@ class ReplyDispatch:
                 reply_id, ReplyError.FCM_TOKEN_MISSING, "The Companion has no FCM token"
             )
         try:
-            result = await self._fcm.send(
-                companion.fcm_token, reply_execute(reply, event, watch_device_id, now)
-            )
+            result = await self._fcm.send(companion.fcm_token, message)
         except FcmUnreachable:
             await self._fail(reply_id, ReplyError.FCM_UNAVAILABLE, "FCM unreachable")
         if result.ok:

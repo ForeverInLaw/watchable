@@ -69,6 +69,50 @@ def test_reply_goes_to_the_companion_as_reply_execute(
     }
 
 
+def data_bytes(data: dict[str, str]) -> int:
+    """What FCM counts against its 4096-byte data limit: keys and values in UTF-8."""
+    return sum(len(key.encode()) + len(value.encode()) for key, value in data.items())
+
+
+def test_the_longest_reply_fits_fcm_data_even_in_four_byte_characters(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    long_key = f"0|com.whatsapp|1234|{'7' * 250}@s.whatsapp.net|10001"
+    post_event(client, paired.android_token, EVENT | {"notification_key": long_key})
+
+    response = post_reply(client, paired.watch_token, reply=REPLY | {"text": "😀" * 800})
+
+    assert response.status_code == 202
+    assert data_bytes(fcm.messages[0]["data"]) <= 4096
+
+
+def test_reply_over_800_characters_is_refused(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+
+    response = post_reply(client, paired.watch_token, reply=REPLY | {"text": "ж" * 801})
+
+    assert response.status_code == 400
+    assert error_of(response)["code"] == "invalid_request"
+    assert fcm.requests == []
+
+
+def test_reply_whose_envelope_outgrows_fcm_data_is_refused(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    # Within 800 characters, but JSON escapes each control character to six bytes.
+    text = "\u0001" * 800
+
+    response = post_reply(client, paired.watch_token, reply=REPLY | {"text": text})
+
+    assert response.status_code == 400
+    assert error_of(response)["code"] == "invalid_request"
+    assert fcm.requests == []
+    assert stored_replies(settings) == []
+
+
 def stored_replies(settings: RelaySettings) -> list[dict[str, Any]]:
     """The replies table, read as an operator would read it to see what happened to a reply."""
     path = settings.database_url.removeprefix("sqlite+aiosqlite:///")

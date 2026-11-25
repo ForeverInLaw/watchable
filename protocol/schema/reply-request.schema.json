@@ -10,7 +10,12 @@
       "type": "string",
       "format": "uuid"
     },
-    "text": { "type": "string", "minLength": 1 },
+    "text": {
+      "description": "At most 800 characters, so the reply.execute envelope fits the 4096 bytes FCM allows for data even in four-byte characters. The relay also refuses, with 400 invalid_request, a reply whose envelope would still outgrow them, such as one of control characters that JSON escapes to six bytes each.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800
+    },
     "sent_at": {
       "description": "When the user sent the reply on the watch; RFC3339 UTC.",
       "type": "string",

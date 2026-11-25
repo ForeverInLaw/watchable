@@ -26,6 +26,14 @@ TTL = "3600s"
 ENVELOPE_VERSION = "1"
 # FCM error codes that a later send can get past (FCM's error code reference).
 TRANSIENT_ERRORS = frozenset({"QUOTA_EXCEEDED", "UNAVAILABLE", "INTERNAL"})
+# FCM refuses a message whose data keys and values together pass this many UTF-8 bytes.
+MAX_DATA_BYTES = 4096
+
+
+def fits_fcm(data: Mapping[str, str]) -> bool:
+    """Whether FCM takes `data` as it counts size: keys and values in UTF-8."""
+    size = sum(len(key.encode()) + len(value.encode()) for key, value in data.items())
+    return size <= MAX_DATA_BYTES
 
 
 class FcmSettings(BaseSettings):
