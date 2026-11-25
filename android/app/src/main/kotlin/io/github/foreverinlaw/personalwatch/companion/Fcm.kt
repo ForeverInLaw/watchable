@@ -45,7 +45,8 @@ class Fcm private constructor() {
                 .setApiKey(BuildConfig.FIREBASE_API_KEY)
                 .setGcmSenderId(BuildConfig.FIREBASE_SENDER_ID)
                 .build()
-            FirebaseApp.initializeApp(context, options)
+            // Once per process; Robolectric creates the Application again for every test in one JVM.
+            if (FirebaseApp.getApps(context).isEmpty()) FirebaseApp.initializeApp(context, options)
             return Fcm()
         }
     }
