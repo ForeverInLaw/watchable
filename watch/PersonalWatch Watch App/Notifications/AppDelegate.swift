@@ -2,14 +2,16 @@ import UserNotifications
 import WatchKit
 
 /// Receives the app lifecycle and APNs callbacks that SwiftUI has no API for
-/// and forwards them to `PushRegistration` and `Pairing`.
+/// and forwards them to `PushRegistration`, `Pairing` and `ReplySender`.
 @MainActor
 final class AppDelegate: NSObject, WKApplicationDelegate, UNUserNotificationCenterDelegate {
     let pushRegistration = PushRegistration()
     let pairing = Pairing()
 
     func applicationDidFinishLaunching() {
-        UNUserNotificationCenter.current().delegate = self
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.setNotificationCategories([ReplyCategory.category])
         pairing.start()
         Task { await pushRegistration.start() }
     }
@@ -30,5 +32,20 @@ final class AppDelegate: NSObject, WKApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
+    }
+
+    /// Sends the text of a reply action to the relay (TZ §8.4); the system waits for the request,
+    /// which gives up after 10 seconds. Other responses only open the app.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard
+            let reply = response as? UNTextInputNotificationResponse,
+            reply.actionIdentifier == ReplyCategory.actionIdentifier,
+            let eventId = reply.notification.request.content.userInfo["event_id"] as? String
+        else { return }
+        let text = reply.userText
+        await ReplySender().send(text: text, toEvent: eventId)
     }
 }

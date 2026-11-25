@@ -18,7 +18,16 @@ struct PairingSession: Decodable, Sendable {
     let watchDeviceToken: String
 }
 
-/// The relay endpoints the watch calls (TZ F1, §5.2). Bodies use snake_case keys.
+/// Body of `POST /v1/events/{event_id}/reply` (protocol/schema/reply-request.schema.json).
+struct Reply: Encodable, Sendable {
+    /// New for every reply, so the relay can tell a resend apart.
+    let replyId: String
+    let text: String
+    /// RFC3339 UTC.
+    let sentAt: String
+}
+
+/// The relay endpoints the watch calls (TZ F1, F3, §5.2). Bodies use snake_case keys.
 struct RelayClient: Sendable {
     let config: RelayConfig
 
@@ -47,6 +56,14 @@ struct RelayClient: Sendable {
         struct Body: Encodable { let pushToken: String }
         let path = "v1/devices/\(credentials.deviceId)/push-token"
         _ = try await exchange(post(path, bearer: credentials.token, body: Body(pushToken: apnsToken)))
+    }
+
+    /// Sends a reply to the event; the relay answers 202 once FCM took it for the Companion (TZ F3).
+    func sendReply(_ reply: Reply, toEvent eventId: String, as credentials: Credentials) async throws(RelayError) {
+        var request = post("v1/events/\(eventId)/reply", bearer: credentials.token, body: reply)
+        request.setValue(reply.replyId, forHTTPHeaderField: "Idempotency-Key")
+        request.timeoutInterval = 10
+        _ = try await exchange(request)
     }
 
     private func post(_ path: String, bearer: String, body: some Encodable) -> URLRequest {

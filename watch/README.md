@@ -30,7 +30,10 @@ relay's `pair/start` with the pairing secret, shows the 8-digit code for the Com
 polls `pair/status` until the code is entered; the device token then lives in the Keychain and
 the screen shows «Подключено» with a re-pair button. A paired watch sends its APNs token to the
 relay on launch when it changed. Incoming pushes are shown as regular notifications, including
-while the app is open. Reply actions come later.
+while the app is open. An alert the relay marks replyable (category `MESSAGE_REPLY`) has an
+«Ответить» action: the text from dictation or Scribble goes to the relay in one
+`POST /v1/events/{event_id}/reply` with a new `reply_id` and a 10-second timeout. The watch does
+not retry it and shows no status; the relay keeps what became of the reply.
 
 ## Relay URL and pairing secret
 
