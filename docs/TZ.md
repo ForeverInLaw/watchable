@@ -1161,7 +1161,8 @@ watch.example.com {
 ## 10. Безопасность и приватность
 
 - TLS 1.2+; HSTS; Caddy.
-- APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600.
+- APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600. Файл SQLite relay тоже 600: в нём текст уведомлений и ответов; relay создаёт его так и сужает права файла, созданного раньше.
+- Relay не отдаёт `/docs`, `/redoc` и `/openapi.json`: API описан в `protocol/`.
 - Device tokens — SHA-256 на сервере.
 - Pairing начинают только часы с pairing-секретом из сборки (§5.2). Остаточный риск: кто получит сборку из TestFlight и расшифрует её, достанет секрет и сможет перехватить pairing. Поэтому сборка не выкладывается в артефакты CI. При утечке сменить `PAIRING_SECRET` в `.env` relay и в GitHub secret, пересобрать часы и спарить заново. Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
 - HMAC для BLE обязателен; для HTTP — опционально.
