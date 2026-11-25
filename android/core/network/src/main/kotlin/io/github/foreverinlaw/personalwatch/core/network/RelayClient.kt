@@ -5,6 +5,7 @@ import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteRequest
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
 import io.github.foreverinlaw.personalwatch.core.protocol.ProtocolJson
+import io.github.foreverinlaw.personalwatch.core.protocol.PushTokenRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -19,7 +20,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /** The relay's HTTP API (TZ §5.1); outcomes follow the retry rules of §5.10. */
-class RelayClient(baseUrl: HttpUrl) {
+class RelayClient(private val baseUrl: HttpUrl) {
     private val http = OkHttpClient()
     private val notificationUrl = baseUrl.newBuilder().addPathSegments("v1/events/notification").build()
     private val pairCompleteUrl = baseUrl.newBuilder().addPathSegments("v1/pair/complete").build()
@@ -48,6 +49,17 @@ class RelayClient(baseUrl: HttpUrl) {
             .post(ProtocolJson.encodeToString(body).toRequestBody(JSON))
             .build()
         return exchange(request) { ProtocolJson.decodeFromString<PairCompleteResponse>(it) }
+    }
+
+    /** Replaces the FCM token of device [deviceId], the Companion that holds [token] (TZ §5.2). */
+    suspend fun updatePushToken(token: String, deviceId: String, body: PushTokenRequest): RelayOutcome<Unit> {
+        val url = baseUrl.newBuilder().addPathSegments("v1/devices").addPathSegment(deviceId).addPathSegment("push-token").build()
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .post(ProtocolJson.encodeToString(body).toRequestBody(JSON))
+            .build()
+        return exchange(request) {}
     }
 
     /** Runs [request] and decodes a successful body with [decode]; a malformed one is rejected. */

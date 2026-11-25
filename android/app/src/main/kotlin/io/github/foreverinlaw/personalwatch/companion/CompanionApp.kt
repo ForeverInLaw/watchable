@@ -24,7 +24,8 @@ class CompanionApp : Application() {
         val url = BuildConfig.RELAY_URL.toHttpUrlOrNull() ?: return@lazy null
         // Under files/, which data_extraction_rules.xml keeps out of backup and device transfer.
         val store = PreferenceDataStoreFactory.create(scope = scope) { filesDir.resolve("datastore/pairing.preferences_pb") }
-        PairedRelay(RelayClient(url), store)
+        // Firebase arrives with the reply path; until then pairing sends no FCM token.
+        PairedRelay(RelayClient(url), store, fcmToken = { null })
     }
 
     val uploader: EventUploader? by lazy {
