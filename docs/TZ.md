@@ -261,7 +261,7 @@ BLE не используется для основного потока уве�
   - `actions` — первое действие со свободным текстом как `{"id": "reply", "type": "text"}`.
   - `posted_at` — `postTime` с точностью до секунды, как в примерах протокола.
 - До pairing (M2) URL relay и статический токен берутся при сборке из `android/local.properties` (`relay.url`, `relay.token`); без них приложение собирается и показывает «Relay не настроен».
-- До Room (§6.2) неотправленные события живут только в памяти: до 12 попыток с backoff из §5.1 (`Retry-After` тоже не больше 5 минут), затем событие отбрасывается.
+- До Room (§6.2) неотправленные события живут только в памяти и уходят по одному в порядке публикации: до 12 попыток с backoff из §5.1 (`Retry-After` тоже не больше 5 минут), затем событие отбрасывается.
 - Отправлять `POST /v1/events/notification`.
 - Relay:
   - сохраняет событие;
@@ -625,7 +625,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `404 not_found` — не retry.
 - `409 duplicate` — считать успехом.
 - `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
-- `429 rate_limited` — retry с `Retry-After`.
+- `429 rate_limited` — retry с `Retry-After`; relay передаёт его в секундах, HTTP-дату не использует.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.

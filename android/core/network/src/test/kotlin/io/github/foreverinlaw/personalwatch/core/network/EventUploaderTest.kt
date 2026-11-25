@@ -2,11 +2,12 @@ package io.github.foreverinlaw.personalwatch.core.network
 
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 class EventUploaderTest {
@@ -32,26 +33,42 @@ class EventUploaderTest {
     private class FakeRelay(private val scope: TestScope, vararg outcomes: RelayOutcome) {
         private val remaining = ArrayDeque(outcomes.toList())
         val sentAt = mutableListOf<Long>()
+        val sentIds = mutableListOf<String>()
 
         suspend fun send(event: NotificationEvent): RelayOutcome {
             sentAt += scope.currentTime
+            sentIds += event.eventId
             return if (remaining.size > 1) remaining.removeFirst() else remaining.first()
         }
     }
 
-    private fun TestScope.upload(relay: FakeRelay): MutableList<RelayOutcome> {
-        val finished = mutableListOf<RelayOutcome>()
-        // The upper jitter bound, so the delays are predictable.
-        EventUploader(this, relay::send, jitter = { it }, onFinished = { _, outcome -> finished += outcome }).upload(event)
-        advanceUntilIdle()
+    /** Uploads [events] in order and returns each finished event id with its last outcome. */
+    private fun TestScope.upload(relay: FakeRelay, vararg events: NotificationEvent = arrayOf(event)): List<Pair<String, RelayOutcome>> {
+        val finished = mutableListOf<Pair<String, RelayOutcome>>()
+        // The upper jitter bound, so the delays are predictable; the uploader's queue outlives the test.
+        val uploader = EventUploader(backgroundScope, relay::send, jitter = { it }, onFinished = { e, outcome -> finished += e.eventId to outcome })
+        events.forEach(uploader::upload)
+        // advanceUntilIdle ignores background work; this outlasts every retry schedule here.
+        advanceTimeBy(2.hours)
         return finished
+    }
+
+    @Test
+    fun `a later event waits until the earlier one is finished`() = runTest {
+        val later = event.copy(eventId = "later")
+        val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Accepted)
+
+        val finished = upload(relay, event, later)
+
+        assertEquals(listOf(event.eventId, event.eventId, "later"), relay.sentIds)
+        assertEquals(listOf(event.eventId, "later"), finished.map { it.first })
     }
 
     @Test
     fun `a retryable failure is retried with growing delays until accepted`() = runTest {
         val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Retry(null), RelayOutcome.Accepted)
 
-        assertEquals(listOf(RelayOutcome.Accepted), upload(relay))
+        assertEquals(listOf(RelayOutcome.Accepted), upload(relay).map { it.second })
         assertEquals(listOf(0L, 1_000L, 3_000L), relay.sentAt)
     }
 
@@ -78,7 +95,7 @@ class EventUploaderTest {
         val rejected = RelayOutcome.Rejected(400, "invalid_request")
         val relay = FakeRelay(this, rejected)
 
-        assertEquals(listOf<RelayOutcome>(rejected), upload(relay))
+        assertEquals(listOf<RelayOutcome>(rejected), upload(relay).map { it.second })
         assertEquals(1, relay.sentAt.size)
     }
 
@@ -86,7 +103,7 @@ class EventUploaderTest {
     fun `delays stop growing at 5 minutes and the uploader gives up after 12 attempts`() = runTest {
         val relay = FakeRelay(this, RelayOutcome.Retry(null))
 
-        assertEquals(listOf<RelayOutcome>(RelayOutcome.Retry(null)), upload(relay))
+        assertEquals(listOf<RelayOutcome>(RelayOutcome.Retry(null)), upload(relay).map { it.second })
         assertEquals(
             listOf(1L, 2, 4, 8, 16, 32, 64, 128, 256, 300, 300).map { it * 1_000 },
             relay.sentAt.zipWithNext { a, b -> b - a },
