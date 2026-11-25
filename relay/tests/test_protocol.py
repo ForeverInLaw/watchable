@@ -46,6 +46,12 @@ COMPANION_EVENT: dict[str, Any] = load_json(
 WATCH_EVENT: dict[str, Any] = load_json(
     SOURCE_PROTOCOL_DIR / "examples" / "notification-event-watch.truncated.json"
 )
+PAIR_START_SCHEMA = "pair-start-request.schema.json"
+PAIR_COMPLETE_SCHEMA = "pair-complete-request.schema.json"
+PAIR_START: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "pair-start-request.json")
+PAIR_COMPLETE: dict[str, Any] = load_json(
+    SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.json"
+)
 
 
 def without(event: dict[str, Any], key: str) -> dict[str, Any]:
@@ -64,6 +70,12 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         (WATCH_SCHEMA, WATCH_EVENT | {"body": None}, "type"),
         (WATCH_SCHEMA, without(WATCH_EVENT, "body_truncated"), "required"),
         (WATCH_SCHEMA, WATCH_EVENT | {"body_full": "a" * 3001}, "unevaluatedProperties"),
+        (PAIR_START_SCHEMA, PAIR_START | {"public_key": "k"}, "additionalProperties"),
+        (PAIR_START_SCHEMA, without(PAIR_START, "apns_token"), "required"),
+        (PAIR_START_SCHEMA, PAIR_START | {"apns_token": "a1b2 c3d4"}, "pattern"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"public_key": "k"}, "additionalProperties"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"pairing_code": "1234567"}, "pattern"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"platform": "watchos"}, "const"),
     ],
     ids=[
         "companion: posted_at not in UTC",
@@ -75,6 +87,12 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         "watch: truncated null body",
         "watch: no body_truncated",
         "watch: unknown field",
+        "pair start: public_key",
+        "pair start: no apns_token",
+        "pair start: apns_token in groups",
+        "pair complete: public_key",
+        "pair complete: 7-digit code",
+        "pair complete: not android",
     ],
 )
 def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:

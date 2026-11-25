@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pair complete request",
+  "description": "Body of POST /v1/pair/complete: the Companion enters the code the watch shows (docs/TZ.md F1). Needs no Bearer token.",
+  "type": "object",
+  "required": ["pairing_code", "platform"],
+  "properties": {
+    "pairing_code": { "$ref": "pair-start-response.schema.json#/$defs/pairing_code" },
+    "platform": { "const": "android" },
+    "fcm_token": {
+      "description": "FCM registration token; optional until FCM arrives in M3.",
+      "type": "string",
+      "minLength": 1
+    },
+    "name": { "$ref": "pair-start-request.schema.json#/$defs/device_name" }
+  },
+  "additionalProperties": false
+}

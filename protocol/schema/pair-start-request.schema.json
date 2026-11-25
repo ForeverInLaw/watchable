@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pair start request",
+  "description": "Body of POST /v1/pair/start: the watch app asks for a pairing code (docs/TZ.md F1). Needs no Bearer token.",
+  "type": "object",
+  "required": ["platform", "apns_token"],
+  "properties": {
+    "platform": { "const": "watchos" },
+    "apns_token": {
+      "description": "Hex APNs device token of the watch app; the relay pushes alerts to it once paired.",
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]+$"
+    },
+    "name": { "$ref": "#/$defs/device_name" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "device_name": {
+      "description": "Shown to the user to tell devices apart.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    }
+  }
+}
