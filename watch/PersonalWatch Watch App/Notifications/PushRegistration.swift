@@ -10,18 +10,9 @@ struct DeviceToken: Equatable {
     init(_ data: Data) {
         hex = data.map { String(format: "%02x", $0) }.joined()
     }
-
-    /// `hex` in space-separated groups of 8 for reading off the screen: lines wrap at
-    /// the spaces, so SwiftUI never hyphenates the token. `send-test-push` accepts this form.
-    var groupedHex: String {
-        let digits = Array(hex)
-        return stride(from: 0, to: digits.count, by: 8)
-            .map { String(digits[$0..<min($0 + 8, digits.count)]) }
-            .joined(separator: " ")
-    }
 }
 
-/// Notification permission and APNs registration state, shown on the main screen.
+/// Notification permission and APNs registration state, shown while the watch waits to pair.
 /// `AppDelegate` drives it from the system callbacks.
 @MainActor
 @Observable

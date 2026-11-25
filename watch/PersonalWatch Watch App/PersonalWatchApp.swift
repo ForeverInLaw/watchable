@@ -6,7 +6,7 @@ struct PersonalWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            PushTokenScreen(registration: appDelegate.pushRegistration)
+            RootScreen(pairing: appDelegate.pairing, registration: appDelegate.pushRegistration)
         }
     }
 }

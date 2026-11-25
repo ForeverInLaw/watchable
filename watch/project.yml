@@ -19,17 +19,16 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     # HTTPS only, which is exempt; spares the export compliance question on every TestFlight build.
     INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+    # The relay and its pairing secret (TZ F1, §5.2). Only the CI TestFlight job sets them, from the
+    # RELAY_URL variable and the PAIRING_SECRET secret; empty, the app shows the relay as not configured.
+    RELAY_URL: ""
+    PAIRING_SECRET: ""
   configs:
     # Release is only built by the CI TestFlight job (ADR 0004). It passes DEVELOPMENT_TEAM and
     # the profile UUIDs (IOS_PROFILE_UUID, WATCH_PROFILE_UUID) read from the installed profiles.
     Release:
       CODE_SIGN_STYLE: Manual
       CODE_SIGN_IDENTITY: Apple Distribution
-
-packages:
-  QRCodeGenerator:
-    url: https://github.com/fwcd/swift-qrcode-generator
-    exactVersion: 2.0.2
 
 targets:
   # Empty iOS wrapper Xcode requires to package and ship a watch-only app.
@@ -56,11 +55,11 @@ targets:
     platform: watchOS
     sources:
       - PersonalWatch Watch App
-    dependencies:
-      - package: QRCodeGenerator
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).watchkitapp
+        # Merged with the generated Info.plist; carries RELAY_URL and PAIRING_SECRET into the bundle.
+        INFOPLIST_FILE: PersonalWatch Watch App/Info.plist
         CODE_SIGN_ENTITLEMENTS: PersonalWatch Watch App/PersonalWatch.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: PersonalWatch
         INFOPLIST_KEY_WKWatchOnly: YES

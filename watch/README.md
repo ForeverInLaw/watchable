@@ -25,8 +25,19 @@ The icon in `Assets.xcassets` is a placeholder.
 - `PersonalWatch Watch App` — the app. The bundle id is set once, in `APP_BUNDLE_ID`
   in `project.yml`; the watch app id (the APNs topic) is that plus `.watchkitapp`.
 
-The app asks for notification permission, registers with APNs, and shows the device
-token as a QR code and as hex text. Incoming pushes are shown as regular notifications,
-including while the app is open. Relay client, pairing and reply actions come later.
+The app asks for notification permission and registers with APNs. Unpaired, it calls the
+relay's `pair/start` with the pairing secret, shows the 8-digit code for the Companion and
+polls `pair/status` until the code is entered; the device token then lives in the Keychain and
+the screen shows «Подключено» with a re-pair button. A paired watch sends its APNs token to the
+relay on launch when it changed. Incoming pushes are shown as regular notifications, including
+while the app is open. Reply actions come later.
+
+## Relay URL and pairing secret
+
+Both come from CI: the `RELAY_URL` repository variable and the `PAIRING_SECRET` secret (the same
+value as in the relay's `.env`) are passed to the TestFlight archive as build settings, which
+`PersonalWatch Watch App/Info.plist` puts into the bundle. PR builds and
+`gh workflow run watch.yml --ref <branch> -f testflight=false` (an unsigned build of a branch)
+carry neither, so that app shows «Relay не настроен».
 
 See `../docs/TZ.md` §8.
