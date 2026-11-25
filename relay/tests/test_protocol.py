@@ -4,6 +4,7 @@ An example is named `<schema>[.<variant>].json` and checked against
 `protocol/schema/<schema>.schema.json`. Schemas reference each other by file name.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,16 @@ def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -
     errors = schema_validator(SOURCE_PROTOCOL_DIR, schema_file).iter_errors(event)
 
     assert keyword in {error.validator for error in errors}
+
+
+def test_fcm_envelope_payload_is_the_reply_execute_example() -> None:
+    """JSON Schema leaves the JSON text in payload unchecked; this decodes and checks it."""
+    envelope = load_json(SOURCE_PROTOCOL_DIR / "examples" / "fcm-envelope.reply-execute.json")
+    payload = json.loads(envelope["payload"])
+
+    schema_validator(SOURCE_PROTOCOL_DIR, "reply-execute.schema.json").validate(payload)
+    assert payload == load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-execute.json")
+    assert envelope["id"] == payload["reply_id"]
 
 
 def test_companion_event_carries_the_full_body() -> None:

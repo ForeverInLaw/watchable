@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reply execute",
+  "description": "payload of the reply.execute envelope the relay sends the Companion over FCM (docs/TZ.md §5.6, §7.4). The Companion finds the notification by notification_key and sends text through its free-text RemoteInput action.",
+  "type": "object",
+  "required": ["reply_id", "event_id", "notification_key", "source_package", "text"],
+  "properties": {
+    "reply_id": { "$ref": "reply-request.schema.json#/properties/reply_id" },
+    "event_id": { "$ref": "notification-event.schema.json#/$defs/fields/properties/event_id" },
+    "notification_key": {
+      "$ref": "notification-event.schema.json#/$defs/fields/properties/notification_key"
+    },
+    "source_package": {
+      "$ref": "notification-event.schema.json#/$defs/fields/properties/source_package"
+    },
+    "text": { "$ref": "reply-request.schema.json#/properties/text" }
+  },
+  "additionalProperties": false
+}

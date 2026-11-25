@@ -1,0 +1,8 @@
+{
+  "v": "1",
+  "id": "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60",
+  "type": "reply.execute",
+  "sent_at": "2026-11-24T12:00:06Z",
+  "device_id": "12861bc2-25be-4ee8-89f4-a568cccacc64",
+  "payload": "{\"reply_id\":\"4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60\",\"event_id\":\"018f3a5e-7c2b-7d4e-9a1b-3c5d7e9f1a2b\",\"notification_key\":\"0|com.whatsapp|1234|null|10001\",\"source_package\":\"com.whatsapp\",\"text\":\"Ок\"}"
+}

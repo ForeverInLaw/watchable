@@ -8,7 +8,8 @@ Layout:
 
 Rules:
 - FCM and BLE messages are wrapped in the envelope `v`, `id`, `type`, `sent_at`, `device_id`, `payload`; HTTP bodies and APNs pushes are not (`../docs/TZ.md` §5.3).
-- Schemas for HTTP endpoints describe the bare body; FCM and BLE schemas describe the `payload` of their `type`.
+- Schemas for HTTP endpoints describe the bare body; FCM and BLE schemas describe the `payload` of their `type`, such as `reply-execute`.
+- `fcm-envelope` is the envelope as FCM `data` carries it: every value a string, `payload` the JSON text of that object (`../docs/TZ.md` §9.4). JSON Schema does not look inside that text, so `relay/tests/test_protocol.py` decodes the example's `payload` and checks it against its schema.
 - `snake_case` for JSON fields.
 - Timestamps are RFC3339 UTC.
 - Breaking changes bump the protocol version: the `/v1` path prefix and the envelope `v`.
