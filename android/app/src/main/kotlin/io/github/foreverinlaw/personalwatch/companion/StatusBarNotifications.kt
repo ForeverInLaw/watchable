@@ -43,7 +43,7 @@ fun StatusBarNotification.toPostedNotification(appLabel: String?): PostedNotific
         actions = notification.actions.orEmpty().map { action ->
             PostedAction(
                 title = action.title?.toString(),
-                acceptsFreeText = action.remoteInputs.orEmpty().any { it.allowFreeFormInput },
+                acceptsFreeText = action.freeTextInput() != null,
             )
         },
     )
