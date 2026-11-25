@@ -27,7 +27,7 @@ def test_healthz_reports_ok(client: TestClient) -> None:
 def test_event_is_pushed_to_the_watch(
     client: TestClient, apns: FakeApnsClient, paired: Pair
 ) -> None:
-    response = post_event(client, paired.android_token, EVENT)
+    response = post_event(client, paired.android_token)
 
     assert response.status_code == 202
     [request] = apns.requests
@@ -39,9 +39,9 @@ def test_event_is_pushed_to_the_watch(
 def test_resent_event_is_not_pushed_twice(
     client: TestClient, apns: FakeApnsClient, paired: Pair
 ) -> None:
-    post_event(client, paired.android_token, EVENT)
+    post_event(client, paired.android_token)
 
-    response = post_event(client, paired.android_token, EVENT)
+    response = post_event(client, paired.android_token)
 
     assert response.status_code == 409
     assert error_of(response) == {
@@ -56,10 +56,10 @@ def test_event_apns_failed_to_take_is_pushed_on_resend(
     client: TestClient, apns: FakeApnsClient, paired: Pair
 ) -> None:
     apns.result = NotificationResult("apns-1", "503", "ServiceUnavailable")
-    failed = post_event(client, paired.android_token, EVENT)
+    failed = post_event(client, paired.android_token)
     apns.result = NotificationResult("apns-2", "200")
 
-    resent = post_event(client, paired.android_token, EVENT)
+    resent = post_event(client, paired.android_token)
 
     assert failed.status_code == 503
     assert error_of(failed)["retryable"] is True
@@ -72,7 +72,7 @@ def test_push_apns_rejects_is_not_retryable(
 ) -> None:
     apns.result = NotificationResult("apns-1", "400", "BadDeviceToken")
 
-    response = post_event(client, paired.android_token, EVENT)
+    response = post_event(client, paired.android_token)
 
     assert response.status_code == 500
     assert error_of(response) == {
@@ -87,7 +87,7 @@ def test_unreachable_apns_is_retryable(
 ) -> None:
     apns.error = MaxAttemptsExceeded()
 
-    response = post_event(client, paired.android_token, EVENT)
+    response = post_event(client, paired.android_token)
 
     assert response.status_code == 503
     assert error_of(response) == {
@@ -183,7 +183,7 @@ def test_unexpected_failure_is_retryable(
     app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
 
     with TestClient(app, raise_server_exceptions=False) as client:
-        response = post_event(client, paired.android_token, EVENT)
+        response = post_event(client, paired.android_token)
 
     assert response.status_code == 500
     assert error_of(response) == {
@@ -199,7 +199,7 @@ def test_delivered_event_stays_delivered_after_restart(
     for expected in (202, 409):
         app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
         with TestClient(app) as client:
-            assert post_event(client, paired.android_token, EVENT).status_code == expected
+            assert post_event(client, paired.android_token).status_code == expected
 
     assert len(apns.requests) == 1
 
@@ -210,9 +210,7 @@ def test_resend_racing_the_first_push_is_not_pushed(
     apns.delay = 0.2
 
     with ThreadPoolExecutor() as pool:
-        responses = list(
-            pool.map(lambda _: post_event(client, paired.android_token, EVENT), range(2))
-        )
+        responses = list(pool.map(lambda _: post_event(client, paired.android_token), range(2)))
 
     assert sorted(response.status_code for response in responses) == [202, 409]
     assert len(apns.requests) == 1

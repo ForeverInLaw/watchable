@@ -198,8 +198,11 @@ def test_eleventh_start_in_a_minute_is_rate_limited(client: TestClient, clock: F
     later = client.post("/v1/pair/start", json=PAIR_START, headers=bearer(PAIRING_SECRET))
 
     assert limited.status_code == 429
-    assert error_of(limited)["code"] == "rate_limited"
-    assert error_of(limited)["retryable"] is True
+    assert error_of(limited) == {
+        "code": "rate_limited",
+        "message": "Too many pairing starts",
+        "retryable": True,
+    }
     assert limited.headers["Retry-After"] == "50"
     assert later.status_code == 201
 
