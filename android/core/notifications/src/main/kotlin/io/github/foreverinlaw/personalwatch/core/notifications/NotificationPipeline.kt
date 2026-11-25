@@ -25,10 +25,11 @@ class NotificationPipeline(
     fun process(posted: PostedNotification, activeNotifications: () -> List<ActiveNotification>): PipelineResult {
         skipReason(posted, activeNotifications)?.let { return PipelineResult.Skip(it) }
         val content = posted.shownContent()
-        return if (shown.put(posted.key, content) == content) {
-            PipelineResult.Skip(SkipReason.DUPLICATE)
-        } else {
-            PipelineResult.Forward(normalize(posted))
+        val previous = shown.put(posted.key, content)
+        return when {
+            posted.lastMessage?.isFromUser == true -> PipelineResult.Skip(SkipReason.ECHO)
+            previous == content -> PipelineResult.Skip(SkipReason.DUPLICATE)
+            else -> PipelineResult.Forward(normalize(posted))
         }
     }
 
@@ -147,4 +148,10 @@ enum class SkipReason {
 
     /** Same key and content as the last post of a notification that is still active (TZ §4 F2). */
     DUPLICATE,
+
+    /**
+     * The chat was re-posted to show the user's own reply last (TZ §4 F2). It still counts as
+     * shown, so the next incoming message is compared with it.
+     */
+    ECHO,
 }
