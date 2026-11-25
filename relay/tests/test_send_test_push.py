@@ -54,10 +54,15 @@ def test_arguments_override_env_and_production_is_default(
     assert "apns-id: abc" in capsys.readouterr().out
 
 
-def test_token_typed_in_groups_as_the_watch_shows_it_is_joined() -> None:
+@pytest.mark.parametrize(
+    "token_args",
+    [["a1b2c3d4", "e5f6a7b8"], ["a1b2c3d4 e5f6a7b8"]],
+    ids=["separate-arguments", "quoted-as-one"],
+)
+def test_token_typed_in_groups_as_the_watch_shows_it_is_joined(token_args: list[str]) -> None:
     connect = Connector()
 
-    main(["a1b2c3d4", "e5f6a7b8", "--ttl", "0"], connect=connect)
+    main([*token_args, "--ttl", "0"], connect=connect)
 
     [request] = connect.client.requests
     assert request.device_token == "a1b2c3d4e5f6a7b8"
