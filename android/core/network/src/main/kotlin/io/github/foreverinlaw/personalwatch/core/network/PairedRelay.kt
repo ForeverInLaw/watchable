@@ -69,17 +69,12 @@ class PairedRelay(
      * Unpaired, it is refused without a request: pairing sends the token then.
      */
     suspend fun updatePushToken(token: String): RelayOutcome<Unit> = pairing.withLock {
-        val preferences = store.data.first()
-        val deviceId = preferences[ANDROID_DEVICE_ID]
-        val deviceToken = preferences[ANDROID_DEVICE_TOKEN]
-        when {
-            deviceId == null || deviceToken == null -> INVALID_TOKEN
-            preferences[FCM_TOKEN] == token -> RelayOutcome.Accepted(Unit)
-            else -> client.updatePushToken(deviceToken, deviceId, PushTokenRequest(token)).also { outcome ->
-                when (outcome) {
-                    is RelayOutcome.Accepted -> store.edit { if (it[ANDROID_DEVICE_TOKEN] == deviceToken) it[FCM_TOKEN] = token }
-                    INVALID_TOKEN -> forget(deviceToken)
-                    else -> Unit
+        authorized { paired ->
+            if (store.data.first()[FCM_TOKEN] == token) return@authorized RelayOutcome.Accepted(Unit)
+            val deviceToken = paired.androidDeviceToken
+            client.updatePushToken(deviceToken, paired.androidDeviceId, PushTokenRequest(token)).also { outcome ->
+                if (outcome is RelayOutcome.Accepted) {
+                    store.edit { if (it[ANDROID_DEVICE_TOKEN] == deviceToken) it[FCM_TOKEN] = token }
                 }
             }
         }
@@ -87,18 +82,21 @@ class PairedRelay(
 
     /** Sends [event] with the stored token. */
     suspend fun postNotification(event: NotificationEvent): RelayOutcome<Unit> =
-        authorized { token -> client.postNotification(token, event) }
+        authorized { client.postNotification(it.androidDeviceToken, event) }
 
     /** Reports what became of reply [replyId] with the stored token (TZ §5.6). */
     suspend fun postReplyResult(replyId: String, result: ReplyResult): RelayOutcome<Unit> =
-        authorized { token -> client.postReplyResult(token, replyId, result) }
+        authorized { client.postReplyResult(it.androidDeviceToken, replyId, result) }
 
-    /** Runs [call] with the stored token; unpaired, it is refused as the relay would refuse it. */
-    private suspend fun <T> authorized(call: suspend (token: String) -> RelayOutcome<T>): RelayOutcome<T> {
-        val token = credentials.first()?.androidDeviceToken ?: return INVALID_TOKEN
-        val outcome = call(token)
+    /**
+     * Runs [call] with the stored credentials; unpaired, it is refused as the relay would refuse it,
+     * and a device token the relay refuses is forgotten.
+     */
+    private suspend fun <T> authorized(call: suspend (PairCompleteResponse) -> RelayOutcome<T>): RelayOutcome<T> {
+        val paired = credentials.first() ?: return INVALID_TOKEN
+        val outcome = call(paired)
         // TZ §5.10: the relay revoked the token, which only a re-pair fixes.
-        if (outcome == INVALID_TOKEN) forget(token)
+        if (outcome == INVALID_TOKEN) forget(paired.androidDeviceToken)
         return outcome
     }
 
