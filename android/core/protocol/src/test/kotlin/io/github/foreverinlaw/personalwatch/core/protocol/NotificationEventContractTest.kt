@@ -6,7 +6,7 @@ import com.networknt.schema.SchemaLocation
 import com.networknt.schema.SchemaRegistry
 import com.networknt.schema.SpecificationVersion
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
@@ -59,6 +59,6 @@ class NotificationEventContractTest {
         val json = ProtocolJson.encodeToString(event)
 
         assertEquals(emptyList<Any>(), schemaErrors(json))
-        assertEquals(15, (Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject).size)
+        assertEquals(15, Json.parseToJsonElement(json).jsonObject.size)
     }
 }

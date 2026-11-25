@@ -31,7 +31,7 @@ class NotificationPipelineTest {
         pipeline.process(posted) { active }
 
     @Test
-    fun `a plain notification becomes a Notification event`() {
+    fun `a plain notification becomes a Notification event with whole-second time`() {
         assertEquals(
             PipelineResult.Forward(
                 NotificationEvent(
@@ -40,7 +40,7 @@ class NotificationPipelineTest {
                     sourceApp = "Mail",
                     notificationKey = "0|org.example.mail|7|null|10001",
                     groupKey = null,
-                    postedAt = "2026-11-25T08:30:00.250Z",
+                    postedAt = "2026-11-25T08:30:00Z",
                     title = "Invoice",
                     body = "Your invoice is ready",
                     subtext = "work@example.org",
@@ -123,6 +123,15 @@ class NotificationPipelineTest {
     @Test
     fun `the expanded text wins over the collapsed one`() {
         assertEquals("Your invoice is ready. Total: 40 EUR", forwarded(mail.copy(bigText = "Your invoice is ready. Total: 40 EUR")).body)
+    }
+
+    @Test
+    fun `an empty expanded text or conversation title falls back to the next source`() {
+        val chat = mail.copy(bigText = "", conversation = Conversation(title = "", isGroup = false, messages = emptyList()))
+
+        val event = forwarded(chat)
+
+        assertEquals("Invoice" to "Your invoice is ready", event.title to event.body)
     }
 
     @Test

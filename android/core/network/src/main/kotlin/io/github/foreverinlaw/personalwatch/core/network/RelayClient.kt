@@ -19,11 +19,8 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The relay's HTTP API (TZ §5.1). Until pairing (M2) every request carries one static bearer token.
  */
-class RelayClient(
-    baseUrl: HttpUrl,
-    private val token: String,
-    private val http: OkHttpClient = OkHttpClient(),
-) {
+class RelayClient(baseUrl: HttpUrl, private val token: String) {
+    private val http = OkHttpClient()
     private val notificationUrl = baseUrl.newBuilder().addPathSegments("v1/events/notification").build()
 
     /** Sends one event; the event id doubles as the idempotency key, so a resend is recognized. */

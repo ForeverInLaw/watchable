@@ -12,12 +12,13 @@ import java.time.Instant
 
 /** Holds the app-wide objects the listener service and the screen share. */
 class CompanionApp : Application() {
-    val deliveryStatus = DeliveryStatus()
+    val relayStatus = RelayStatus()
 
     /** Null when the build carries no usable relay URL or token. */
     val uploader: EventUploader? by lazy {
         val url = BuildConfig.RELAY_URL.toHttpUrlOrNull() ?: return@lazy null
-        if (BuildConfig.RELAY_TOKEN.isBlank()) return@lazy null
+        // OkHttp refuses header values outside printable ASCII, which would fail every upload.
+        if (BuildConfig.RELAY_TOKEN.isBlank() || BuildConfig.RELAY_TOKEN.any { it !in ' '..'~' }) return@lazy null
         val client = RelayClient(url, BuildConfig.RELAY_TOKEN)
         EventUploader(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -25,7 +26,7 @@ class CompanionApp : Application() {
             onFinished = { event, outcome ->
                 // Never log notification text (TZ §7.8).
                 Log.i(TAG, "event ${event.eventId}: $outcome")
-                deliveryStatus.record(outcome, Instant.now())
+                relayStatus.record(outcome, Instant.now())
             },
         )
     }

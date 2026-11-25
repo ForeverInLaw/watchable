@@ -4,7 +4,9 @@ import io.github.foreverinlaw.personalwatch.core.protocol.EventAction
 import io.github.foreverinlaw.personalwatch.core.protocol.EventActionType
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Turns posted notifications into Notification events (TZ §4 F2, §7.3), or says why one is skipped.
@@ -14,14 +16,14 @@ class NotificationPipeline(
     private val ownPackage: String,
     private val newEventId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    private val recentPosts = RecentPosts(DEDUP_WINDOW_MILLIS)
+    private val recentPosts = RecentPosts<List<String?>>(DEDUP_WINDOW)
 
     /** [activeNotifications] is read only when the group-summary rule needs it. */
     fun process(posted: PostedNotification, activeNotifications: () -> List<ActiveNotification>): PipelineResult {
         skipReason(posted, activeNotifications)?.let { return PipelineResult.Skip(it) }
         val event = normalize(posted)
         val content = listOf(event.title, event.body, event.subtext)
-        return if (recentPosts.isRepeat(posted.key, content, posted.postTime)) {
+        return if (recentPosts.recordAndCheckRepeat(posted.key, content, posted.postTime)) {
             PipelineResult.Skip(SkipReason.DUPLICATE)
         } else {
             PipelineResult.Forward(event)
@@ -48,9 +50,10 @@ class NotificationPipeline(
             sourceApp = posted.appLabel.cleaned(),
             notificationKey = posted.key,
             groupKey = posted.groupKey,
-            postedAt = Instant.ofEpochMilli(posted.postTime).toString(),
-            title = posted.displayTitle().cleaned(),
-            body = posted.displayBody().cleaned(),
+            // Whole seconds, like the relay's own timestamps and the protocol examples.
+            postedAt = Instant.ofEpochMilli(posted.postTime).truncatedTo(ChronoUnit.SECONDS).toString(),
+            title = posted.displayTitle(),
+            body = posted.displayBody(),
             subtext = posted.subText.cleaned(),
             category = posted.category,
             isOngoing = posted.isOngoing,
@@ -58,7 +61,7 @@ class NotificationPipeline(
             isGroupSummary = posted.isGroupSummary,
             replyable = replyAction != null,
             actions = listOfNotNull(
-                replyAction?.let { EventAction(REPLY_ACTION_ID, it.title.cleaned() ?: "Reply", EventActionType.TEXT) },
+                replyAction?.let { EventAction(REPLY_ACTION_ID, it.title.cleaned().orEmpty(), EventActionType.TEXT) },
             ),
         )
     }
@@ -66,15 +69,17 @@ class NotificationPipeline(
 
 /** A chat is titled by its conversation, or by whoever wrote last in a direct chat. */
 private fun PostedNotification.displayTitle(): String? {
-    val conversation = conversation ?: return title
-    return conversation.title ?: conversation.messages.lastOrNull()?.sender ?: title
+    val conversation = conversation ?: return title.cleaned()
+    return conversation.title.cleaned() ?: conversation.messages.lastOrNull()?.sender.cleaned() ?: title.cleaned()
 }
 
 /** A chat shows its latest message; in a group chat the body names the sender. */
 private fun PostedNotification.displayBody(): String? {
     val conversation = conversation
-    val last = conversation?.messages?.lastOrNull() ?: return bigText ?: text
-    return if (conversation.isGroup && last.sender != null) "${last.sender}: ${last.text.orEmpty()}" else last.text
+    val last = conversation?.messages?.lastOrNull() ?: return bigText.cleaned() ?: text.cleaned()
+    val sender = last.sender.cleaned()
+    val text = last.text.cleaned()
+    return if (conversation.isGroup && sender != null) "$sender: ${text.orEmpty()}" else text
 }
 
 private const val REPLY_ACTION_ID = "reply"
@@ -90,7 +95,7 @@ private fun String?.cleaned(): String? {
 }
 
 /** A repost of the same key and text within this window is a duplicate (TZ §4 F2). */
-private const val DEDUP_WINDOW_MILLIS = 5_000L
+private val DEDUP_WINDOW = 5.seconds
 
 /** Notification.CATEGORY_CALL: calls are out of scope (TZ §1.3). */
 private const val CATEGORY_CALL = "call"

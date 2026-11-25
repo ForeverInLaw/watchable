@@ -27,7 +27,8 @@ cloudflared tunnel --url http://localhost:8000
 
 It prints a `https://<random>.trycloudflare.com` address that changes on every run; put
 it in `android/local.properties` as `relay.url`, with `RELAY_TOKEN` as `relay.token`, and
-rebuild the Companion (`../android/README.md`). To send an event by hand, post the protocol example with the `RELAY_TOKEN` value from `.env`:
+rebuild the Companion (`../android/README.md`). To send an event by hand, post the
+protocol example with the `RELAY_TOKEN` value from `.env`:
 
 ```bash
 curl -i https://<random>.trycloudflare.com/v1/events/notification \

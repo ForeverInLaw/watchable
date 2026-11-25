@@ -21,20 +21,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/** Notification access, relay configuration and the last delivery (WATCH-12). */
+/** Notification access, relay configuration and how the relay took the last event. */
 @Composable
-fun StatusScreen(isRelayConfigured: Boolean, deliveryStatus: DeliveryStatus) {
+fun StatusScreen(isRelayConfigured: Boolean, relayStatus: RelayStatus) {
     val context = LocalContext.current
     // Re-read on every lifecycle change, so returning from the system settings shows the new state.
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val hasAccess = remember(lifecycleState) { context.hasNotificationAccess() }
-    val lastDelivery by deliveryStatus.lastDelivery.collectAsStateWithLifecycle()
+    val lastResult by relayStatus.lastResult.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
@@ -60,18 +61,18 @@ fun StatusScreen(isRelayConfigured: Boolean, deliveryStatus: DeliveryStatus) {
         )
         ListItem(
             headlineContent = { Text(stringResource(R.string.last_event)) },
-            supportingContent = { Text(lastDelivery?.let { deliveryText(it) } ?: stringResource(R.string.last_event_none)) },
+            supportingContent = { Text(lastResult?.let { resultText(it) } ?: stringResource(R.string.last_event_none)) },
         )
     }
 }
 
 @Composable
-private fun deliveryText(delivery: DeliveryStatus.Delivery): String {
-    val time = TIME_FORMAT.format(delivery.at.atZone(ZoneId.systemDefault()))
-    return when (val outcome = delivery.outcome) {
+private fun resultText(result: RelayStatus.Result): String {
+    val time = TIME_FORMAT.format(result.at.atZone(ZoneId.systemDefault()))
+    return when (result.outcome) {
         RelayOutcome.Accepted -> stringResource(R.string.last_event_accepted, time)
         is RelayOutcome.Retry -> stringResource(R.string.last_event_unreachable, time)
-        is RelayOutcome.Rejected -> stringResource(R.string.last_event_rejected, time, outcome.code ?: outcome.status.toString())
+        is RelayOutcome.Rejected -> stringResource(R.string.last_event_rejected, time)
     }
 }
 

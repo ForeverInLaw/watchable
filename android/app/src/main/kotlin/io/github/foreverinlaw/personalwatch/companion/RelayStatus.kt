@@ -6,14 +6,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
 
-/** The last event's fate at the relay, for the status screen. */
-class DeliveryStatus {
-    data class Delivery(val outcome: RelayOutcome, val at: Instant)
+/** How the relay took the last event, for the status screen. */
+class RelayStatus {
+    data class Result(val outcome: RelayOutcome, val at: Instant)
 
-    private val last = MutableStateFlow<Delivery?>(null)
-    val lastDelivery: StateFlow<Delivery?> = last.asStateFlow()
+    private val last = MutableStateFlow<Result?>(null)
+    val lastResult: StateFlow<Result?> = last.asStateFlow()
 
     fun record(outcome: RelayOutcome, at: Instant) {
-        last.value = Delivery(outcome, at)
+        last.value = Result(outcome, at)
     }
 }

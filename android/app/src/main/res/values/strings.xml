@@ -3,14 +3,14 @@
     <string name="app_name">Companion</string>
     <string name="notification_access">Доступ к уведомлениям</string>
     <string name="notification_access_granted">Разрешён</string>
-    <string name="notification_access_missing">Не разрешён: уведомления не уходят на часы</string>
+    <string name="notification_access_missing">Не разрешён</string>
     <string name="grant_notification_access">Разрешить доступ</string>
     <string name="relay">Relay</string>
     <string name="relay_configured">Настроен</string>
     <string name="relay_not_configured">Не настроен</string>
     <string name="last_event">Последнее уведомление</string>
     <string name="last_event_none">Ещё не отправлялось</string>
-    <string name="last_event_accepted">Доставлено на relay в %1$s</string>
+    <string name="last_event_accepted">Принято relay в %1$s</string>
     <string name="last_event_unreachable">Relay недоступен, отправка прекращена в %1$s</string>
-    <string name="last_event_rejected">Relay отклонил в %1$s: %2$s</string>
+    <string name="last_event_rejected">Отклонено relay в %1$s</string>
 </resources>

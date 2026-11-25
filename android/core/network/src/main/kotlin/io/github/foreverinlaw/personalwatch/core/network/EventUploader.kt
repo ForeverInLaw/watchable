@@ -2,7 +2,6 @@ package io.github.foreverinlaw.personalwatch.core.network
 
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -13,7 +12,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Sends each event to the relay in the background and resends it with exponential backoff and
- * jitter, capped at 5 minutes (TZ §5.1), while the relay answers that a retry can help.
+ * jitter while the relay answers that a retry can help. Every delay, including one the relay asks
+ * for with Retry-After, is capped at 5 minutes (TZ §5.1).
  * Pending events live in memory only and are lost with the process.
  */
 class EventUploader(
@@ -24,12 +24,16 @@ class EventUploader(
     /** Called once per event with the last outcome: accepted, rejected, or the retry it gave up on. */
     private val onFinished: (NotificationEvent, RelayOutcome) -> Unit,
 ) {
-    fun upload(event: NotificationEvent): Job = scope.launch {
+    fun upload(event: NotificationEvent) {
+        scope.launch { deliver(event) }
+    }
+
+    private suspend fun deliver(event: NotificationEvent) {
         var backoff = FIRST_BACKOFF
         var attempts = 1
         var outcome = send(event)
         while (outcome is RelayOutcome.Retry && attempts < MAX_ATTEMPTS) {
-            delay(outcome.after ?: jitter(backoff))
+            delay((outcome.after ?: jitter(backoff)).coerceAtMost(MAX_BACKOFF))
             backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
             outcome = send(event)
             attempts++

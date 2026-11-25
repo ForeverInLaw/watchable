@@ -65,6 +65,15 @@ class EventUploaderTest {
     }
 
     @Test
+    fun `a longer delay asked by the relay is capped at 5 minutes`() = runTest {
+        val relay = FakeRelay(this, RelayOutcome.Retry(1_000.seconds), RelayOutcome.Accepted)
+
+        upload(relay)
+
+        assertEquals(listOf(0L, 300_000L), relay.sentAt)
+    }
+
+    @Test
     fun `a rejected event is not retried`() = runTest {
         val rejected = RelayOutcome.Rejected(400, "invalid_request")
         val relay = FakeRelay(this, rejected)

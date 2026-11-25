@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         val app = application as CompanionApp
         setContent {
             MaterialTheme {
-                StatusScreen(isRelayConfigured = app.isRelayConfigured, deliveryStatus = app.deliveryStatus)
+                StatusScreen(isRelayConfigured = app.isRelayConfigured, relayStatus = app.relayStatus)
             }
         }
     }

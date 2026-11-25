@@ -1,5 +1,6 @@
 package io.github.foreverinlaw.personalwatch.companion
 
+import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -10,6 +11,11 @@ import io.github.foreverinlaw.personalwatch.core.notifications.PipelineResult
 /** Receives every posted notification once the user grants notification access (TZ §7.3). */
 class CompanionListenerService : NotificationListenerService() {
     private val pipeline by lazy { NotificationPipeline(ownPackage = packageName) }
+
+    /** The system can unbind the listener, for example after the app is updated (TZ §7.3). */
+    override fun onListenerDisconnected() {
+        requestRebind(ComponentName(this, CompanionListenerService::class.java))
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val uploader = (application as CompanionApp).uploader ?: return
