@@ -166,6 +166,65 @@ class NotificationPipelineTest {
         assertEquals(true, process(next) is PipelineResult.Forward)
     }
 
+    private val myReply = Message(sender = "Me", text = "on my way", isFromUser = true)
+
+    @Test
+    fun `a direct chat reposted with the user's own reply last is an echo`() {
+        process(chat(Message("Bob", "ok")))
+
+        assertEquals(PipelineResult.Skip(SkipReason.ECHO), process(chat(Message("Bob", "ok"), myReply)))
+    }
+
+    @Test
+    fun `a group chat reposted with the user's own reply last is an echo`() {
+        val family = Conversation(title = "Family", isGroup = true, messages = listOf(Message("Mom", "Dinner at 7"), myReply))
+
+        assertEquals(PipelineResult.Skip(SkipReason.ECHO), process(mail.copy(conversation = family)))
+    }
+
+    @Test
+    fun `an unchanged repost of an echo is skipped again`() {
+        process(chat(Message("Bob", "ok"), myReply))
+
+        assertEquals(true, process(chat(Message("Bob", "ok"), myReply)) is PipelineResult.Skip)
+    }
+
+    @Test
+    fun `an incoming message right after an echo is forwarded`() {
+        process(chat(Message("Bob", "ok")))
+        process(chat(Message("Bob", "ok"), myReply))
+
+        assertEquals("ok", forwarded(chat(Message("Bob", "ok"), myReply, Message("Bob", "ok"))).body)
+    }
+
+    @Test
+    fun `an incoming message is forwarded when the app drops the history before the echo`() {
+        process(chat(Message("Bob", "ok")))
+        process(chat(myReply))
+
+        assertEquals("ok", forwarded(chat(Message("Bob", "ok"))).body)
+    }
+
+    @Test
+    fun `an echo in the shade at connect counts as shown`() {
+        pipeline.syncWithShade(listOf(chat(myReply)))
+
+        assertEquals("ok", forwarded(chat(Message("Bob", "ok"))).body)
+    }
+
+    @Test
+    fun `a repost of an incoming message after an echo is a duplicate`() {
+        process(chat(myReply))
+        process(chat(myReply, Message("Bob", "ok")))
+
+        assertEquals(PipelineResult.Skip(SkipReason.DUPLICATE), process(chat(myReply, Message("Bob", "ok"))))
+    }
+
+    @Test
+    fun `a notification without MessagingStyle is never an echo`() {
+        assertEquals(true, process(mail.copy(title = "Me")) is PipelineResult.Forward)
+    }
+
     @Test
     fun `a repost with new text is forwarded`() {
         process(mail)
