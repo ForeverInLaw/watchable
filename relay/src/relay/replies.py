@@ -3,14 +3,14 @@
 import logging
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, NoReturn, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from relay.clock import Clock
-from relay.devices import DeviceRegistry
+from relay.devices import Companion, DeviceRegistry
 from relay.fcm import (
     MAX_DATA_BYTES,
     FcmSender,
@@ -66,10 +66,21 @@ class ReplyError(StrEnum):
 
 
 class ReplyResult(TypedDict):
-    """Body of POST /v1/replies/{reply_id}/result, shaped by protocol/schema/reply-result."""
+    """Body of POST /v1/replies/{reply_id}/result, shaped by protocol/schema/reply-result.
+    The parsed JSON holds plain strings, which equal these StrEnum members."""
 
-    status: Literal["sent", "failed"]
-    error: NotRequired[Literal["notification_gone", "remote_input_unsupported"]]
+    status: Literal[ReplyStatus.SENT, ReplyStatus.FAILED]
+    error: NotRequired[Literal[ReplyError.NOTIFICATION_GONE, ReplyError.REMOTE_INPUT_UNSUPPORTED]]
+
+
+class ReplyExecute(TypedDict):
+    """Payload of the reply.execute FCM envelope, shaped by protocol/schema/reply-execute."""
+
+    reply_id: str
+    event_id: str
+    notification_key: str
+    source_package: str
+    text: str
 
 
 class UnknownEvent(Exception):
@@ -155,7 +166,7 @@ class ReplyStore:
             update(replies)
             .where(owned, (replies.c.status == ReplyStatus.QUEUED) | FCM_WAS_UNAVAILABLE)
             .values(
-                status=ReplyStatus(result["status"]),
+                status=result["status"],
                 error=result.get("error"),
                 completed_at=rfc3339(now),
             )
@@ -180,7 +191,7 @@ def reply_execute(
     reply: ReplyRequest, event: StoredEvent, watch_device_id: str, now: datetime
 ) -> dict[str, str]:
     """The reply.execute envelope (§5.6); its id is the reply_id until the outbox (M6)."""
-    payload = {
+    payload: ReplyExecute = {
         "reply_id": reply["reply_id"],
         "event_id": event.event_id,
         "notification_key": event.notification_key,
@@ -231,32 +242,35 @@ class ReplyDispatch:
         if not await self._store.add(reply, event_id, watch_device_id, now):
             raise DuplicateReply
         reply_id = reply["reply_id"]
-        if companion.fcm_token is None:
-            await self._fail(
-                reply_id, ReplyError.FCM_TOKEN_MISSING, "The Companion has no FCM token"
-            )
         try:
-            result = await self._fcm.send(companion.fcm_token, message)
-        except FcmUnreachable:
-            await self._fail(reply_id, ReplyError.FCM_UNAVAILABLE, "FCM unreachable")
-        except ServiceAccountRefused:
-            await self._fail(
-                reply_id, ReplyError.FCM_REJECTED, "Google refused the service account"
-            )
-        if result.ok:
-            log.info("reply %s to event %s: handed to FCM", reply_id, event_id)
-            return
-        if result.unregistered:
-            await self._devices.drop_push_token(companion.device_id, companion.fcm_token)
-        reason = ReplyError.FCM_UNAVAILABLE if result.retryable else ReplyError.FCM_REJECTED
-        await self._fail(reply_id, reason, f"FCM answered {result.status} {result.error}")
+            await self._deliver(companion, message)
+        except Undelivered as error:
+            await self._store.fail(reply_id, error.reason, self._clock())
+            log.warning("reply %s: failed %s (%s)", reply_id, error.reason, error)
+            raise
+        log.info("reply %s to event %s: handed to FCM", reply_id, event_id)
 
     async def complete(self, reply_id: str, android_device_id: str, result: ReplyResult) -> None:
         """Records what the Companion made of the reply; raises as ReplyStore.complete."""
         await self._store.complete(reply_id, android_device_id, result, self._clock())
         log.info("reply %s: %s %s", reply_id, result["status"], result.get("error", ""))
 
-    async def _fail(self, reply_id: str, reason: ReplyError, message: str) -> NoReturn:
-        await self._store.fail(reply_id, reason, self._clock())
-        log.warning("reply %s: failed %s (%s)", reply_id, reason, message)
-        raise Undelivered(reason, message)
+    async def _deliver(self, companion: Companion, message: dict[str, str]) -> None:
+        """Hands `message` to the Companion's FCM token; raises Undelivered when FCM does
+        not take it, after dropping a token FCM calls unregistered."""
+        if companion.fcm_token is None:
+            raise Undelivered(ReplyError.FCM_TOKEN_MISSING, "The Companion has no FCM token")
+        try:
+            result = await self._fcm.send(companion.fcm_token, message)
+        except FcmUnreachable as error:
+            raise Undelivered(ReplyError.FCM_UNAVAILABLE, "FCM unreachable") from error
+        except ServiceAccountRefused as error:
+            raise Undelivered(
+                ReplyError.FCM_REJECTED, "Google refused the service account"
+            ) from error
+        if result.ok:
+            return
+        if result.unregistered:
+            await self._devices.drop_push_token(companion.device_id, companion.fcm_token)
+        reason = ReplyError.FCM_UNAVAILABLE if result.retryable else ReplyError.FCM_REJECTED
+        raise Undelivered(reason, f"FCM answered {result.status} {result.error}")
