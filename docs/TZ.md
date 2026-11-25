@@ -408,6 +408,7 @@ Relay:
   ```json
   {"error":{"code":"...","message":"...","retryable":true}}
   ```
+  Схема: `protocol/schema/error.schema.json`. `message` не повторяет содержимое запроса.
 - HTTP-коды: 200, 201, 202, 204, 400, 401, 403, 404, 409, 429, 500, 503.
 - Retry: экспоненциальный backoff с jitter, максимум 5 минут.
 - Rate limit: 120 событий/мин, 30 ответов/мин, 60 команд/мин.
@@ -491,12 +492,18 @@ Companion отправляет событие телом `POST /v1/events/notifi
 - `actions` — только действия, которые можно выполнить, может быть пустым; MVP — reply (`type: text`).
 - Схемы: `protocol/schema/notification-event.schema.json` (Companion → relay) и `notification-event-watch.schema.json` (relay → Watch app).
 
+Ответы `POST /v1/events/notification`:
+- `202` без тела — событие сохранено, APNs принял пуш.
+- `409 duplicate` — APNs уже принимал пуш с этим `event_id`; второго пуша нет.
+- `503 apns_unavailable` или `503 apns_rejected` с `retryable: true` — APNs недоступен, троттлит (429) или отвечает 5xx. Событие сохранено, но пуш не принят: повтор с тем же `event_id` отправляет пуш снова.
+- `500 apns_rejected` с `retryable: false` — APNs отклонил пуш (например, `BadDeviceToken`).
+
 ### 5.5 APNs payload
 
 ```json
 {
   "aps": {
-    "alert": {"title": "WhatsApp", "body": "Привет"},
+    "alert": {"title": "WhatsApp · Alice", "body": "Привет"},
     "sound": "default",
     "category": "MESSAGE_REPLY",
     "thread-id": "com.whatsapp",
@@ -508,6 +515,8 @@ Companion отправляет событие телом `POST /v1/events/notifi
 }
 ```
 
+- `title` — `source_app · title`: приложение и отправитель, например «Telegram · Алиса». Без `source_app` — `source_package`; без `title` — только приложение.
+- `body` — `body` события; при `body: null` поля нет, и alert показывает только заголовок.
 - `category: MESSAGE_REPLY` — только при `replyable: true`; у остальных уведомлений поля нет.
 - `thread-id` = `source_package`: уведомления одного приложения группируются на часах.
 
@@ -521,7 +530,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 
 Ограничения:
 - payload ≤ 4 КБ;
-- если текст длиннее — relay обрезает его, полный текст доступен через `GET /v1/events/{id}`; тестовый скрипт M0 не обрезает, и APNs отклоняет такой пуш с `PayloadTooLarge`;
+- если payload длиннее — relay и тестовый скрипт обрезают `alert.body` до самого длинного начала, с которым payload в UTF-8 JSON с `…` в конце укладывается в 4 КБ; полный текст доступен через `GET /v1/events/{id}`;
 - для фоновой синхронизации — `apns-push-type: background`, `content-available: 1`, priority 5; не гарантируется.
 
 ### 5.6 Reply
