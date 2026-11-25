@@ -46,3 +46,6 @@ data class ActiveNotification(
     val groupKey: String?,
     val isGroupSummary: Boolean,
 )
+
+/** How this notification looks to the group-summary rule while it is in the shade. */
+fun PostedNotification.asActive() = ActiveNotification(key, groupKey, isGroupSummary)

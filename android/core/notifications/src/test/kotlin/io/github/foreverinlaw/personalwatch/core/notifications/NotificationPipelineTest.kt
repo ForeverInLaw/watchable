@@ -92,6 +92,14 @@ class NotificationPipelineTest {
     }
 
     @Test
+    fun `a group summary in the shade at connect is forwarded once its children are gone`() {
+        val child = mail.copy(key = "0|org.example.chat|5|g:chats|10001", groupKey = chatSummary.groupKey)
+        pipeline.syncWithShade(listOf(chatSummary, child))
+
+        assertEquals(true, process(chatSummary, active = listOf(chatSummary.asActive())) is PipelineResult.Forward)
+    }
+
+    @Test
     fun `a group summary without active children is forwarded`() {
         val otherGroup = ActiveNotification(key = "0|org.example.chat|9|g:other|10001", groupKey = "0|org.example.chat|g:other", isGroupSummary = false)
 
@@ -101,33 +109,70 @@ class NotificationPipelineTest {
     }
 
     @Test
-    fun `a repost with the same text within 5 seconds is a duplicate`() {
+    fun `a repost with the same text is a duplicate however late it comes`() {
         process(mail)
 
-        assertEquals(PipelineResult.Skip(SkipReason.DUPLICATE), process(mail.copy(postTime = mail.postTime + 4_999)))
+        assertEquals(PipelineResult.Skip(SkipReason.DUPLICATE), process(mail.copy(postTime = mail.postTime + 60_000)))
     }
 
     @Test
-    fun `a repost with new text within 5 seconds is forwarded`() {
+    fun `the same text is forwarded again once the notification was removed`() {
+        process(mail)
+        pipeline.forget(mail.key)
+
+        assertEquals(true, process(mail.copy(postTime = mail.postTime + 60_000)) is PipelineResult.Forward)
+    }
+
+    @Test
+    fun `a notification that went away while the listener was unbound is forgotten`() {
+        process(mail)
+        pipeline.syncWithShade(emptyList())
+
+        assertEquals(true, process(mail.copy(postTime = mail.postTime + 60_000)) is PipelineResult.Forward)
+    }
+
+    @Test
+    fun `a notification already in the shade when the listener connects is not mirrored on its repost`() {
+        pipeline.syncWithShade(listOf(mail))
+
+        assertEquals(PipelineResult.Skip(SkipReason.DUPLICATE), process(mail.copy(postTime = mail.postTime + 60_000)))
+    }
+
+    @Test
+    fun `a notification in the shade at connect is mirrored once it changes`() {
+        pipeline.syncWithShade(listOf(mail))
+
+        assertEquals(true, process(mail.copy(text = "Second invoice")) is PipelineResult.Forward)
+    }
+
+    private fun chat(vararg messages: Message) =
+        mail.copy(conversation = Conversation(title = "Bob", isGroup = false, messages = messages.toList()))
+
+    @Test
+    fun `a chat reposted with the same messages is a duplicate`() {
+        process(chat(Message("Bob", "ok")))
+
+        val repost = chat(Message("Bob", "ok")).copy(postTime = mail.postTime + 60_000)
+
+        assertEquals(PipelineResult.Skip(SkipReason.DUPLICATE), process(repost))
+    }
+
+    @Test
+    fun `a new chat message with the same text as the last one is forwarded`() {
+        process(chat(Message("Bob", "ok")))
+
+        val next = chat(Message("Bob", "ok"), Message("Bob", "ok"))
+
+        assertEquals(true, process(next) is PipelineResult.Forward)
+    }
+
+    @Test
+    fun `a repost with new text is forwarded`() {
         process(mail)
 
         val result = process(mail.copy(postTime = mail.postTime + 2_000, text = "Second invoice"))
 
         assertEquals("Second invoice", (result as PipelineResult.Forward).event.body)
-    }
-
-    @Test
-    fun `the same text 5 seconds after the last post is forwarded again`() {
-        process(mail)
-
-        assertEquals(true, process(mail.copy(postTime = mail.postTime + 5_000)) is PipelineResult.Forward)
-    }
-
-    @Test
-    fun `the same text posted long before the last post is not a duplicate`() {
-        process(mail)
-
-        assertEquals(true, process(mail.copy(postTime = mail.postTime - 60_000)) is PipelineResult.Forward)
     }
 
     private fun forwarded(posted: PostedNotification) = (process(posted) as PipelineResult.Forward).event
@@ -192,6 +237,4 @@ class NotificationPipelineTest {
 
         assertEquals(null to "broken \uFFFD emoji", event.title to event.body)
     }
-
-    private fun PostedNotification.asActive() = ActiveNotification(key, groupKey, isGroupSummary)
 }

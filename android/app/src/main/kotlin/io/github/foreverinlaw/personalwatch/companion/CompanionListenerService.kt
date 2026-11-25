@@ -26,6 +26,14 @@ class CompanionListenerService : NotificationListenerService() {
         }
     }
 
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        pipeline.forget(sbn.key)
+    }
+
+    override fun onListenerConnected() {
+        pipeline.syncWithShade(activeNotifications.orEmpty().map { it.toPostedNotification(appLabel(it.packageName)) })
+    }
+
     /** Needs the launcher-app <queries> entry in the manifest to see other packages. */
     private fun appLabel(packageName: String): String? = try {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
