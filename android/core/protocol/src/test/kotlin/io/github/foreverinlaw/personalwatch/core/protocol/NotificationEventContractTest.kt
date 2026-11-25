@@ -1,35 +1,14 @@
 package io.github.foreverinlaw.personalwatch.core.protocol
 
-import com.networknt.schema.InputFormat
-import com.networknt.schema.Schema
-import com.networknt.schema.SchemaLocation
-import com.networknt.schema.SchemaRegistry
-import com.networknt.schema.SpecificationVersion
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.io.File
 
 class NotificationEventContractTest {
-    private val protocolDir = File(System.getProperty("protocol.dir"))
-
-    private val schema: Schema =
-        // fetchRemoteResources lets the loader read the schema straight from its file: IRI.
-        SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12) { registry ->
-            registry.schemaLoader { it.fetchRemoteResources() }
-        }
-            .getSchema(SchemaLocation.of(protocolDir.resolve("schema/notification-event.schema.json").toPath().toUri().toString()))
-            .apply { initializeValidators() }
-
-    private fun schemaErrors(json: String) =
-        schema.validate(json, InputFormat.JSON) { context ->
-            context.executionConfig { it.formatAssertionsEnabled(true) }
-        }
-
     @Test
     fun `the protocol example decodes and encodes back to the same JSON`() {
-        val example = protocolDir.resolve("examples/notification-event.json").readText()
+        val example = ProtocolFiles.example("notification-event")
 
         val event = ProtocolJson.decodeFromString<NotificationEvent>(example)
 
@@ -58,7 +37,7 @@ class NotificationEventContractTest {
 
         val json = ProtocolJson.encodeToString(event)
 
-        assertEquals(emptyList<Any>(), schemaErrors(json))
+        assertEquals(emptyList<Any>(), ProtocolFiles.schemaErrors("notification-event", json))
         assertEquals(15, Json.parseToJsonElement(json).jsonObject.size)
     }
 }
