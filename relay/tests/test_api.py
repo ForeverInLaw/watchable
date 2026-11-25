@@ -176,6 +176,11 @@ def test_unknown_path_answers_in_the_error_shape(client: TestClient) -> None:
     assert error_of(response) == {"code": "not_found", "message": "Not Found", "retryable": False}
 
 
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_api_description_is_not_served(client: TestClient, path: str) -> None:
+    assert client.get(path).status_code == 404
+
+
 def test_unexpected_failure_is_retryable(
     settings: RelaySettings, apns: FakeApnsClient, fcm: FakeFcmEndpoint, paired: Pair
 ) -> None:

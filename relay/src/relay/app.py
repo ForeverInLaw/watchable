@@ -88,7 +88,8 @@ def create_app(
         await fcm.close()
         await engine.dispose()
 
-    app = FastAPI(title="Relay", lifespan=lifespan)
+    # No /docs, /redoc or /openapi.json: the relay is public, and protocol/ documents the API.
+    app = FastAPI(title="Relay", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     for error_type in (ApiError, HTTPException, RequestValidationError, Exception):
         app.add_exception_handler(error_type, answer_error)
     for router in (health, pairing.router, events.router, replies.router):
