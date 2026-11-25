@@ -8,6 +8,7 @@ import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteRequest
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
 import io.github.foreverinlaw.personalwatch.core.protocol.PushTokenRequest
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -84,10 +85,18 @@ class PairedRelay(
         }
     }
 
-    /** Sends [event] with the stored token; unpaired, it is refused as the relay would refuse it. */
-    suspend fun postNotification(event: NotificationEvent): RelayOutcome<Unit> {
+    /** Sends [event] with the stored token. */
+    suspend fun postNotification(event: NotificationEvent): RelayOutcome<Unit> =
+        authorized { token -> client.postNotification(token, event) }
+
+    /** Reports what became of reply [replyId] with the stored token (TZ §5.6). */
+    suspend fun postReplyResult(replyId: String, result: ReplyResult): RelayOutcome<Unit> =
+        authorized { token -> client.postReplyResult(token, replyId, result) }
+
+    /** Runs [call] with the stored token; unpaired, it is refused as the relay would refuse it. */
+    private suspend fun <T> authorized(call: suspend (token: String) -> RelayOutcome<T>): RelayOutcome<T> {
         val token = credentials.first()?.androidDeviceToken ?: return INVALID_TOKEN
-        val outcome = client.postNotification(token, event)
+        val outcome = call(token)
         // TZ §5.10: the relay revoked the token, which only a re-pair fixes.
         if (outcome == INVALID_TOKEN) forget(token)
         return outcome

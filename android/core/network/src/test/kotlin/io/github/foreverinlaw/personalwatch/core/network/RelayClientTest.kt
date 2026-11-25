@@ -3,6 +3,8 @@ package io.github.foreverinlaw.personalwatch.core.network
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteRequest
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyFailure
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import org.junit.Assert.assertNull
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
@@ -11,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 
 class RelayClientTest {
@@ -38,7 +41,7 @@ class RelayClientTest {
     @Before
     fun start() {
         server.start()
-        client = RelayClient(baseUrl = server.url("/"))
+        client = RelayClient(baseUrl = server.url("/"), replyResultTimeout = 1.seconds)
     }
 
     @After
@@ -148,7 +151,36 @@ class RelayClientTest {
         )
     }
 
+    @Test
+    fun `posts a reply result with the device token and the reply id as the idempotency key`() = runTest {
+        respond(204)
+
+        val outcome = client.postReplyResult(TOKEN, REPLY_ID, ReplyResult.Failed(ReplyFailure.NOTIFICATION_GONE))
+
+        assertEquals(RelayOutcome.Accepted(Unit), outcome)
+        val request = server.takeRequest()
+        assertEquals("POST /v1/replies/$REPLY_ID/result", "${request.method} ${request.url.encodedPath}")
+        assertEquals("Bearer $TOKEN", request.headers["Authorization"])
+        assertEquals(REPLY_ID, request.headers["Idempotency-Key"])
+        assertEquals("""{"status":"failed","error":"notification_gone"}""", request.body?.utf8())
+    }
+
+    @Test
+    fun `a reply result the relay already has counts as accepted`() = runTest {
+        respond(409, error("duplicate", retryable = false))
+
+        assertEquals(RelayOutcome.Accepted(Unit), client.postReplyResult(TOKEN, REPLY_ID, ReplyResult.Sent))
+    }
+
+    @Test
+    fun `a reply result the relay does not answer in time is given up for a retry`() = runTest {
+        server.enqueue(MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build())
+
+        assertEquals(RelayOutcome.Retry(after = null), client.postReplyResult(TOKEN, REPLY_ID, ReplyResult.Sent))
+    }
+
     private companion object {
+        const val REPLY_ID = "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60"
         const val TOKEN = "sDxL4rPeYN53lN-rmJIMmRJXVz5Ytnp2uB5P_WCo6CI"
     }
 }

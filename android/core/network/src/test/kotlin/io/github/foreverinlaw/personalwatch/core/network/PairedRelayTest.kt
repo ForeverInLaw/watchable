@@ -3,6 +3,7 @@ package io.github.foreverinlaw.personalwatch.core.network
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
@@ -161,6 +162,31 @@ class PairedRelayTest {
     }
 
     @Test
+    fun `a reply result goes out with the token from pairing`() = runTest {
+        val relay = relay()
+        respondPaired()
+        relay.pair(code = "48151623", name = null)
+        server.takeRequest()
+        respond(204, "")
+
+        assertEquals(RelayOutcome.Accepted(Unit), relay.postReplyResult(REPLY_ID, ReplyResult.Sent))
+        val request = server.takeRequest()
+        assertEquals("/v1/replies/$REPLY_ID/result", request.url.encodedPath)
+        assertEquals("Bearer ${credentials.androidDeviceToken}", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `a reply result refused for a revoked token unpairs the Companion`() = runTest {
+        val relay = relay()
+        respondPaired()
+        relay.pair(code = "48151623", name = null)
+        respond(401, """{"error":{"code":"invalid_token","message":"m","retryable":false}}""")
+
+        assertEquals(RelayOutcome.Rejected(401, "invalid_token"), relay.postReplyResult(REPLY_ID, ReplyResult.Sent))
+        assertNull(relay.credentials.first())
+    }
+
+    @Test
     fun `pairing sends the FCM token`() = runTest {
         val relay = relay()
         fcmToken = "fcm-1"
@@ -234,5 +260,9 @@ class PairedRelayTest {
 
         assertEquals(RelayOutcome.Rejected(401, "invalid_token"), relay.updatePushToken("fcm-1"))
         assertEquals(0, server.requestCount)
+    }
+
+    private companion object {
+        const val REPLY_ID = "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60"
     }
 }
