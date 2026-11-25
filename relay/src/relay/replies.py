@@ -17,6 +17,8 @@ from relay.tables import replies
 
 REPLY_SCHEMA = "reply-request.schema.json"
 REPLY_EXECUTE = "reply.execute"
+# Replies the relay takes from the watch in any minute (§5.1).
+REPLIES_PER_MINUTE = 30
 
 
 class ReplyRequest(TypedDict):

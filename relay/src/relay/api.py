@@ -97,6 +97,7 @@ class Relay:
     pair_start_limit: RateLimit
     intake: NotificationIntake
     replies: ReplyDispatch
+    reply_limit: RateLimit
     event_parser: BodyParser[NotificationEvent]
     pair_start_parser: BodyParser[PairStartRequest]
     pair_complete_parser: BodyParser[PairCompleteRequest]

@@ -32,6 +32,11 @@ PAIR_COMPLETE_WITHOUT_FCM: dict[str, Any] = load_json(
 )
 
 
+def another_reply() -> dict[str, Any]:
+    """The example reply with a new reply_id, as the watch sends every reply."""
+    return REPLY | {"reply_id": str(uuid.uuid4())}
+
+
 def post_reply(
     client: TestClient, token: str, event_id: str = EVENT["event_id"], reply: object = REPLY
 ) -> Response:
@@ -276,7 +281,7 @@ def test_an_unregistered_fcm_token_fails_the_reply_and_is_not_used_again(
     assert error_of(response)["retryable"] is False
     assert failure_of(settings) == ("failed", "fcm_rejected", "2026-11-25T12:00:00Z")
 
-    another = post_reply(client, paired.watch_token, reply=REPLY | {"reply_id": str(uuid.uuid4())})
+    another = post_reply(client, paired.watch_token, reply=another_reply())
 
     assert error_of(another)["code"] == "fcm_token_missing"
     assert len(fcm.requests) == 1
@@ -295,7 +300,7 @@ def test_a_new_fcm_token_after_unregistered_takes_replies_again(
     )
     fcm.status, fcm.body = 200, {"name": "projects/watch-app/messages/2"}
 
-    response = post_reply(client, paired.watch_token, reply=REPLY | {"reply_id": str(uuid.uuid4())})
+    response = post_reply(client, paired.watch_token, reply=another_reply())
 
     assert response.status_code == 202
     assert fcm.messages[-1]["token"] == "new-fcm-token"
@@ -369,3 +374,26 @@ def test_a_reply_resent_after_fcm_rejected_it_is_a_duplicate(
     }
     assert response.status_code == 409
     assert len(fcm.requests) == 1
+
+
+def test_thirty_first_reply_in_a_minute_is_rate_limited(
+    client: TestClient, fcm: FakeFcmEndpoint, clock: FakeClock, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    for _ in range(30):
+        assert post_reply(client, paired.watch_token, reply=another_reply()).status_code == 202
+        clock.advance(1)
+
+    limited = post_reply(client, paired.watch_token, reply=another_reply())
+    clock.advance(30)
+    later = post_reply(client, paired.watch_token, reply=another_reply())
+
+    assert limited.status_code == 429
+    assert error_of(limited) == {
+        "code": "rate_limited",
+        "message": "Too many replies",
+        "retryable": True,
+    }
+    assert limited.headers["Retry-After"] == "30"
+    assert later.status_code == 202
+    assert len(fcm.requests) == 31

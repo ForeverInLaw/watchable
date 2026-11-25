@@ -28,7 +28,7 @@ from relay.pairing import (
 )
 from relay.protocol import BodyParser
 from relay.ratelimit import RateLimit
-from relay.replies import REPLY_SCHEMA, ReplyDispatch, ReplyStore
+from relay.replies import REPLIES_PER_MINUTE, REPLY_SCHEMA, ReplyDispatch, ReplyStore
 from relay.routes import events, pairing, replies
 from relay.settings import RelaySettings
 from relay.store import EventStore
@@ -68,6 +68,7 @@ def create_app(
             pair_start_limit=RateLimit(PAIR_STARTS_PER_MINUTE, timedelta(minutes=1), clock),
             intake=NotificationIntake(events, connect_apns(), clock),
             replies=ReplyDispatch(ReplyStore(engine), events, devices, fcm, clock),
+            reply_limit=RateLimit(REPLIES_PER_MINUTE, timedelta(minutes=1), clock),
             event_parser=BodyParser(protocol_dir, EVENT_SCHEMA),
             pair_start_parser=BodyParser(protocol_dir, PAIR_START_SCHEMA),
             pair_complete_parser=BodyParser(protocol_dir, PAIR_COMPLETE_SCHEMA),

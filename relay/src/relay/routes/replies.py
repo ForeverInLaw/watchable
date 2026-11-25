@@ -14,6 +14,15 @@ async def reply(
 ) -> Response:
     """Keeps the reply and hands reply.execute to FCM for the paired Companion; 202 once FCM
     took it. The watch sends each reply once and shows nothing of the outcome (§8.4)."""
+    retry_after = relay.reply_limit.admit()
+    if retry_after is not None:
+        raise ApiError(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "rate_limited",
+            "Too many replies",
+            retryable=True,
+            retry_after=retry_after,
+        )
     body = await parse_body(request, relay.reply_parser)
     try:
         await relay.replies.send(body, event_id, watch.id)
