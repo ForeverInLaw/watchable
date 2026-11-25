@@ -18,7 +18,8 @@ The APNs credentials come from the `APNS_*` variables in the repo-root `.env`
 uv run --project relay --env-file .env send-test-push <device-token>
 ```
 
-The device token is the hex string the watch app shows. By default the body carries the
+The device token is the hex string the watch app shows in groups of 8; pass it whole or
+as the groups. By default the body carries the
 send time, so the delay is visible on the watch, and APNs keeps the push for an hour
 while the watch is offline (`--ttl 0` tries once). See `--help` for the payload options.
 
