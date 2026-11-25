@@ -243,16 +243,25 @@ BLE не используется для основного потока уве�
 - Companion слушает `NotificationListenerService`.
 - Фильтры:
   - пропускать свои уведомления;
-  - пропускать `isOngoing` (кроме `CATEGORY_CALL`? — calls вне scope, пропускать);
-  - пропускать групповые summary, если есть дочерние;
+  - пропускать `isOngoing` и `CATEGORY_CALL` — звонки вне scope, даже если приложение не пометило их ongoing;
+  - пропускать групповой summary, пока активно хотя бы одно дочернее уведомление его группы; summary без активных дочерних (некоторые приложения публикуют только его) отправляется с `is_group_summary: true`;
   - blocklist по package name;
-  - дедуп по `notification_key` + `postTime` в окне 5 секунд.
+  - дедуп: повторная публикация с тем же `notification_key` и тем же текстом (`title`, `body`, `subtext` после нормализации) менее чем через 5 секунд по `postTime` после предыдущей публикации этого ключа пропускается. Новый текст под тем же ключом (второе сообщение в чате через 2 секунды) отправляется всегда.
 - Извлекать:
   - `packageName`, `applicationInfo.loadLabel`;
   - `title`, `text`, `bigText`, `subText`, `conversationTitle`;
   - `category`, `isClearable`, `isOngoing`;
   - `notification_key`, `groupKey`, `postTime`;
-  - `replyable` = есть `Notification.Action` с `RemoteInput`.
+  - `replyable` = есть `Notification.Action` с `RemoteInput`, принимающим свободный текст.
+- Нормализация текста:
+  - MessagingStyle: `title` — `conversationTitle`, иначе отправитель последнего сообщения, иначе `EXTRA_TITLE`; `body` — текст последнего сообщения, в групповом чате с префиксом «Отправитель: »;
+  - остальные: `title` — `EXTRA_TITLE`, `body` — `EXTRA_BIG_TEXT`, иначе `EXTRA_TEXT`;
+  - `subtext` — `EXTRA_SUB_TEXT`; пустые строки — `null` и не мешают следующему источнику; одиночные суррогаты заменяются на U+FFFD, иначе relay ответит `400` (§5.4);
+  - `group_key` — ключ группы, только если приложение или системная автогруппировка сгруппировали уведомление, иначе `null`;
+  - `actions` — первое действие со свободным текстом как `{"id": "reply", "type": "text"}`.
+  - `posted_at` — `postTime` с точностью до секунды, как в примерах протокола.
+- До pairing (M2) URL relay и статический токен берутся при сборке из `android/local.properties` (`relay.url`, `relay.token`); без них приложение собирается и показывает «Relay не настроен».
+- До Room (§6.2) неотправленные события живут только в памяти и уходят по одному в порядке публикации: до 12 попыток с backoff из §5.1 (`Retry-After` тоже не больше 5 минут), затем событие отбрасывается.
 - Отправлять `POST /v1/events/notification`.
 - Relay:
   - сохраняет событие;
@@ -616,8 +625,9 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `404 not_found` — не retry.
 - `409 duplicate` — считать успехом.
 - `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
-- `429 rate_limited` — retry с `Retry-After`.
+- `429 rate_limited` — retry с `Retry-After`; relay передаёт его в секундах, HTTP-дату не использует.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
+- 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
 - FCM: `UNREGISTERED` — пометить токен; `QUOTA_EXCEEDED` — backoff.
 
@@ -778,7 +788,8 @@ Retention:
 
 ### 7.1 Стек
 
-- Kotlin 2.1.
+- Kotlin 2.4, встроенная поддержка Kotlin в AGP 9.5; Gradle 9.9, JDK 21.
+- compileSdk 37.1 (его требуют текущие AndroidX и OkHttp), minSdk 31, targetSdk 35.
 - Jetpack Compose (Material 3).
 - Room.
 - DataStore.
@@ -786,7 +797,6 @@ Retention:
 - OkHttp + Kotlinx Serialization.
 - Hilt.
 - Firebase Messaging.
-- minSdk 31, targetSdk 35.
 
 ### 7.2 Модули
 
@@ -1215,7 +1225,7 @@ watch.example.com {
 ### 12.3 CI
 
 - GitHub Actions:
-  - Linux: Android `assembleDebug`, `test`.
+  - Linux: Android `assembleDebug`, `test` — на PR, который меняет `android/`, `protocol/` (тесты `core/protocol` проверяют событие по схеме) или сам workflow, и на push в `main`. Кэшируются Gradle (зависимости и build cache), платформа SDK и runtime Robolectric.
   - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/`, `protocol/` (тесты relay проверяют примеры по схемам) или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/`, сам workflow или его action `.github/actions/xcodegen`. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
