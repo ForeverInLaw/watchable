@@ -161,3 +161,16 @@ def test_reply_to_an_expired_event_is_not_found(
     assert response.status_code == 404
     assert error_of(response)["code"] == "not_found"
     assert fcm.requests == []
+
+
+def test_a_repeated_reply_id_is_a_duplicate_and_goes_to_fcm_once(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    post_reply(client, paired.watch_token)
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 409
+    assert error_of(response)["code"] == "duplicate"
+    assert len(fcm.requests) == 1

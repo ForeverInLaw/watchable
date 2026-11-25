@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request, Response, status
 
 from relay.api import ApiError, CurrentRelay, CurrentWatch, invalid_token, parse_body
-from relay.replies import NoCompanion, NotReplyable, UnknownEvent
+from relay.replies import DuplicateReply, NoCompanion, NotReplyable, UnknownEvent
 
 router = APIRouter()
 
@@ -27,6 +27,10 @@ async def reply(
             "invalid_request",
             "The event takes no reply",
             retryable=False,
+        ) from error
+    except DuplicateReply as error:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "duplicate", "Reply already sent", retryable=False
         ) from error
     except NoCompanion as error:
         raise invalid_token() from error

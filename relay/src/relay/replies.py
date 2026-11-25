@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TypedDict
 
-from sqlalchemy import insert
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from relay.clock import Clock
@@ -49,24 +49,29 @@ class NoFcmToken(Exception):
     """The paired Companion has not sent its FCM token yet."""
 
 
+class DuplicateReply(Exception):
+    """The relay already has a reply with this reply_id."""
+
+
 class ReplyStore:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
 
     async def add(
         self, reply: ReplyRequest, event_id: str, watch_device_id: str, now: datetime
-    ) -> None:
+    ) -> bool:
+        """Stores `reply` as queued; False when its reply_id is already stored."""
+        statement = insert(replies).values(
+            id=reply["reply_id"],
+            event_id=event_id,
+            watch_device_id=watch_device_id,
+            text=reply["text"],
+            status=ReplyStatus.QUEUED,
+            created_at=rfc3339(now),
+        )
         async with self._engine.begin() as connection:
-            await connection.execute(
-                insert(replies).values(
-                    id=reply["reply_id"],
-                    event_id=event_id,
-                    watch_device_id=watch_device_id,
-                    text=reply["text"],
-                    status=ReplyStatus.QUEUED,
-                    created_at=rfc3339(now),
-                )
-            )
+            result = await connection.execute(statement.on_conflict_do_nothing())
+        return result.rowcount == 1
 
 
 def reply_execute(
@@ -104,7 +109,8 @@ class ReplyDispatch:
     async def send(self, reply: ReplyRequest, event_id: str, watch_device_id: str) -> FcmResult:
         """Stores `reply` as queued and hands reply.execute to FCM; FcmResult is FCM's answer.
 
-        Raises NoCompanion, UnknownEvent, NotReplyable or NoFcmToken before anything is stored.
+        Raises NoCompanion, UnknownEvent, NotReplyable or NoFcmToken before anything is stored,
+        DuplicateReply when the reply_id is already stored.
         """
         companion = await self._devices.paired_companion(watch_device_id)
         if companion is None:
@@ -118,6 +124,7 @@ class ReplyDispatch:
             raise NotReplyable
         if companion.fcm_token is None:
             raise NoFcmToken
-        await self._store.add(reply, event_id, watch_device_id, now)
+        if not await self._store.add(reply, event_id, watch_device_id, now):
+            raise DuplicateReply
         message = reply_execute(reply, event, watch_device_id, now)
         return await self._fcm.send(companion.fcm_token, message)
