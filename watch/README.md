@@ -10,7 +10,7 @@ xcodebuild -project PersonalWatch.xcodeproj -scheme PersonalWatch \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-There is no local Mac: CI builds every PR unsigned, and a push to `main`, a `v1.2.3` tag or a
+There is no local Mac: CI builds every PR that touches `watch/` unsigned, and a push to `main`, a `v1.2.3` tag or a
 manual run of the `watch` workflow signs the app and uploads it to TestFlight
 (`.github/workflows/watch.yml`, `../docs/TZ.md` §12.3). To try a branch on the watch before
 merging:

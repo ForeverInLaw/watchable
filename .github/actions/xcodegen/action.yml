@@ -1,7 +1,6 @@
 # Generates watch/PersonalWatch.xcodeproj from watch/project.yml with a pinned XcodeGen.
 # Pinned because the project is regenerated on every run, so a new XcodeGen could change it.
-# The checksum matters too: the TestFlight job runs this binary before it loads the signing
-# secrets, so a swapped release asset must not run there.
+# The checksum keeps a swapped release asset from running on a runner that may hold secrets.
 name: Generate watch Xcode project
 description: Install a pinned XcodeGen and generate the watch Xcode project.
 

@@ -1155,15 +1155,15 @@ watch.example.com {
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`.
   - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
-  - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/` или сам workflow. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
+  - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/`, сам workflow или его action `.github/actions/xcodegen`. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
-  - Номер сборки (`CURRENT_PROJECT_VERSION`) — `github.run_number` workflow `watch`; он растёт и на PR-запусках, поэтому в TestFlight номера идут с пропусками. Перезапуск уже выгруженного run App Store Connect отклонит как дубликат — нужен новый запуск.
+  - Номер сборки (`CURRENT_PROJECT_VERSION`) — `github.run_number` workflow `watch`; он растёт и на PR-запусках, поэтому в TestFlight номера идут с пропусками. Перезапуск уже выгруженного run App Store Connect отклонит как дубликат — нужен новый запуск. Переименование `watch.yml` обнулит счётчик — тогда к номеру нужно прибавить смещение. Выгрузки идут по одной (общая concurrency-группа job), чтобы меньший номер не пришёл после большего.
   - Версия (`MARKETING_VERSION`) берётся из `watch/project.yml`; тег `vX.Y.Z` переопределяет её на `X.Y.Z`. После релизного тега поднять версию в `project.yml`.
   - Оба macOS-job используют Xcode 26.3 (`DEVELOPER_DIR`): App Store Connect принимает только сборки на SDK 26, а один Xcode гарантирует, что зелёный PR соберётся и при выгрузке.
   - Подпись только в конфигурации Release: `CODE_SIGN_STYLE=Manual`, профили выбираются по UUID, которые CI читает из самих профилей; bundle id нигде, кроме `project.yml`, не повторяется.
   - Watch app объявляет `ITSAppUsesNonExemptEncryption=NO` (только HTTPS), чтобы TestFlight не спрашивал про экспортный контроль на каждой сборке. Пересмотреть, если появится собственное шифрование.
-- Подписывающие секреты (сертификат distribution, provisioning profile, App Store Connect API key) — только в GitHub Actions secrets.
-- Workflow с секретами не запускается на `pull_request` из форков.
+- Подписывающие секреты — только в GitHub Actions secrets: `DIST_CERT_P12_BASE64` и `DIST_CERT_P12_PASSWORD` (сертификат distribution), `PROFILE_IOS_BASE64` и `PROFILE_WATCH_BASE64` (App Store profiles iOS-обёртки и watch app), `ASC_KEY_P8_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID` (App Store Connect API key), `APPLE_TEAM_ID`.
+- Job с секретами не запускается на `pull_request`, в том числе из форков; `pull_request_target` не используется.
 - Ни один ключ, сертификат или профиль не коммитится в репозиторий.
 
 ### 12.4 Provisioning
@@ -1171,7 +1171,7 @@ watch.example.com {
 - Apple Developer Program (платный).
 - App ID для watch app; включить **Push Notifications**.
 - APNs Auth Key `.p8` + Key ID + Team ID; положить на relay, не в репозиторий.
-- Distribution-сертификат и App Store provisioning profile; `aps-environment=production`.
+- Distribution-сертификат и два App Store provisioning profile: для iOS-обёртки и для watch app (`aps-environment=production`).
 - App Store Connect API key для загрузки сборок из CI.
 - Приложение в App Store Connect (без публикации) для TestFlight.
 - iPhone спарен с A2093; установка watch app — через TestFlight на iPhone.
