@@ -83,7 +83,7 @@ fun PairingScreen(relay: PairedRelay, onDone: () -> Unit) {
 @Composable
 private fun failureText(failure: RelayOutcome<Nothing>): String = when (failure) {
     is RelayOutcome.Rejected if failure.code == "invalid_pairing_code" -> stringResource(R.string.pairing_invalid_code)
-    is RelayOutcome.Rejected -> stringResource(R.string.pairing_rejected, failure.status)
+    is RelayOutcome.Rejected -> stringResource(R.string.pairing_rejected)
     else -> stringResource(R.string.pairing_unreachable)
 }
 

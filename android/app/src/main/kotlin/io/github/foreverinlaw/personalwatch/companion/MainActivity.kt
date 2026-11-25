@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
                 if (isPairing && relay != null) {
                     PairingScreen(relay, onDone = { isPairing = false })
                 } else {
-                    StatusScreen(pairing = app.pairing, relayStatus = app.relayStatus, onPair = { isPairing = true })
+                    StatusScreen(relay = relay, relayStatus = app.relayStatus, onPair = { isPairing = true })
                 }
             }
         }

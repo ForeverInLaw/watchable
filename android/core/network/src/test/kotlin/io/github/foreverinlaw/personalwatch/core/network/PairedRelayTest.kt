@@ -3,18 +3,24 @@ package io.github.foreverinlaw.personalwatch.core.network
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.seconds
 
 class PairedRelayTest {
     @get:Rule
@@ -59,12 +65,12 @@ class PairedRelayTest {
 
     private fun respond(code: Int, body: String) = server.enqueue(MockResponse.Builder().code(code).body(body).build())
 
-    private fun respondPaired() = respond(
-        201,
+    private fun pairedBody() =
         """{"android_device_id":"${credentials.androidDeviceId}",""" +
             """"android_device_token":"${credentials.androidDeviceToken}",""" +
-            """"watch_device_id":"${credentials.watchDeviceId}"}""",
-    )
+            """"watch_device_id":"${credentials.watchDeviceId}"}"""
+
+    private fun respondPaired() = respond(201, pairedBody())
 
     @Test
     fun `pairing keeps the credentials the relay returns`() = runTest {
@@ -72,6 +78,22 @@ class PairedRelayTest {
         respondPaired()
 
         assertEquals(RelayOutcome.Accepted(credentials), relay.pair(code = "48151623", name = "Pixel 8"))
+        assertEquals(credentials, relay.credentials.first())
+    }
+
+    @Test
+    fun `a pairing the relay accepted is kept even if the caller stops waiting`() = runTest(timeout = 20.seconds) {
+        val relay = relay()
+        server.enqueue(
+            MockResponse.Builder().code(201).body(pairedBody()).headersDelay(300, TimeUnit.MILLISECONDS).build(),
+        )
+
+        val pairing = launch { relay.pair(code = "48151623", name = null) }
+        // Runs the coroutine up to the network call, which waits on another thread for the answer.
+        runCurrent()
+        assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        pairing.cancelAndJoin()
+
         assertEquals(credentials, relay.credentials.first())
     }
 

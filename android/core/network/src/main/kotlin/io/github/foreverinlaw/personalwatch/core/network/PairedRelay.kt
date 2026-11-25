@@ -7,9 +7,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteRequest
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 /**
  * The relay as the Companion sees it once paired (TZ F1): pairing keeps the device token and ids
@@ -26,8 +28,12 @@ class PairedRelay(private val client: RelayClient, private val store: DataStore<
         )
     }
 
-    /** Enters the [code] the watch shows; on success the new credentials replace the old ones. */
-    suspend fun pair(code: String, name: String?): RelayOutcome<PairCompleteResponse> {
+    /**
+     * Enters the [code] the watch shows; on success the new credentials replace the old ones.
+     * Not cancellable: once the relay takes the code it revokes the old devices, so the answer
+     * must be saved even if the caller, such as a screen the user left, stops waiting.
+     */
+    suspend fun pair(code: String, name: String?): RelayOutcome<PairCompleteResponse> = withContext(NonCancellable) {
         val outcome = client.completePairing(PairCompleteRequest(pairingCode = code, name = name))
         if (outcome is RelayOutcome.Accepted) {
             store.edit {
@@ -36,7 +42,7 @@ class PairedRelay(private val client: RelayClient, private val store: DataStore<
                 it[WATCH_DEVICE_ID] = outcome.body.watchDeviceId
             }
         }
-        return outcome
+        outcome
     }
 
     /** Sends [event] with the stored token; unpaired, it is refused as the relay would refuse it. */
