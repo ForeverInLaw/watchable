@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pair start response",
-  "description": "201 answer to POST /v1/pair/start. The watch keeps the token in the Keychain, shows the code and polls GET /v1/pair/status until it expires (docs/TZ.md F1).",
+  "description": "201 answer to POST /v1/pair/start. The watch shows the code and polls GET /v1/pair/status until it expires; the token goes to the Keychain once paired (docs/TZ.md F1).",
   "type": "object",
   "required": ["pairing_id", "pairing_code", "watch_device_id", "watch_device_token", "expires_at"],
   "properties": {

@@ -217,7 +217,7 @@ BLE не используется для основного потока уве�
   - `watch_device_id` — для `POST /v1/devices/{id}/push-token`
   - `watch_device_token` (32 байта, base64url)
   - `expires_at` (+10 минут)
-- Watch app сохраняет `watch_device_token` в Keychain и показывает код крупным шрифтом.
+- Watch app показывает код крупным шрифтом. Пока код на экране, сессия живёт в памяти; `watch_device_token` попадает в Keychain после `paired=true`, поэтому брошенный повторный pairing оставляет текущий.
 - Активная сессия одна: новый `pair/start` гасит прежнюю, её код больше не принимается. `pair/start` relay принимает не чаще 10 раз в минуту, дальше `429` с `Retry-After`.
 - Пользователь вводит код в Companion.
 - Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов. Pairing-секрет Companion не нужен.

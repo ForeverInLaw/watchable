@@ -36,7 +36,7 @@ struct RootScreen: View {
             Text("Подключите часы к Wi-Fi или iPhone")
             retryButton
         case .secretMismatch:
-            Text("Сборка не совпадает с relay: он отклонил её pairing-секрет")
+            Text("Сборка не совпадает с relay. Нужна новая сборка часов.")
         case .storageFailed:
             Text("Не удалось сохранить pairing")
             retryButton
@@ -58,8 +58,7 @@ struct RootScreen: View {
     private func failureText(_ error: RelayError) -> String {
         switch error {
         case .refused(429, _): "Слишком много попыток, повторите через минуту"
-        case .refused(let status, _): "Relay отклонил запрос (\(status))"
-        case .malformedAnswer, .unreachable: "Relay ответил непонятно"
+        default: "Relay отклонил запрос"
         }
     }
 }
