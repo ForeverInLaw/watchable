@@ -5,7 +5,7 @@
   "$ref": "notification-event.schema.json#/$defs/fields",
   "required": ["body_truncated"],
   "properties": {
-    "body": { "type": ["string", "null"], "maxLength": 3000 },
+    "body": { "maxLength": 3000 },
     "body_truncated": { "type": "boolean" }
   },
   "if": {
