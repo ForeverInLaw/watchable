@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.github.foreverinlaw.personalwatch.core.network.EventUploader
 import io.github.foreverinlaw.personalwatch.core.network.PairedRelay
 import io.github.foreverinlaw.personalwatch.core.network.RelayClient
+import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,7 +35,10 @@ class CompanionApp : Application() {
             onFinished = { event, outcome ->
                 // Never log notification text (TZ §7.8).
                 Log.i(TAG, "event ${event.eventId}: $outcome")
-                relayStatus.record(outcome, Instant.now())
+                // An invalid token means unpaired, and the screen hides the last outcome while
+                // unpaired; recorded, it would show up as the last outcome right after pairing.
+                val unpaired = outcome is RelayOutcome.Rejected && outcome.code == "invalid_token"
+                if (!unpaired) relayStatus.record(outcome, Instant.now())
             },
         )
     }
