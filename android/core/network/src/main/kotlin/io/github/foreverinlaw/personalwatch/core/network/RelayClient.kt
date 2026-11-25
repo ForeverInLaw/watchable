@@ -30,19 +30,16 @@ class RelayClient(
     private val replyResultTimeout: Duration = 10.seconds,
 ) {
     private val http = OkHttpClient()
-    private val notificationUrl = baseUrl.newBuilder().addPathSegments("v1/events/notification").build()
-    private val pairCompleteUrl = baseUrl.newBuilder().addPathSegments("v1/pair/complete").build()
+    private val notificationUrl = url("v1", "events", "notification")
+    private val pairCompleteUrl = url("v1", "pair", "complete")
 
     /**
      * Sends one event with the Companion's device [token]; the event id doubles as the idempotency
      * key, so a resend is recognized, and a duplicate means the relay already has the event.
      */
     suspend fun postNotification(token: String, event: NotificationEvent): RelayOutcome<Unit> {
-        val request = Request.Builder()
-            .url(notificationUrl)
-            .header("Authorization", "Bearer $token")
+        val request = authorizedPost(notificationUrl, token, ProtocolJson.encodeToString(event))
             .header("Idempotency-Key", event.eventId)
-            .post(ProtocolJson.encodeToString(event).toRequestBody(JSON))
             .build()
         return exchange(request) {}.duplicateAccepted()
     }
@@ -52,35 +49,36 @@ class RelayClient(
      * and a duplicate means the relay already has a result for the reply.
      */
     suspend fun postReplyResult(token: String, replyId: String, result: ReplyResult): RelayOutcome<Unit> {
-        val url = baseUrl.newBuilder().addPathSegments("v1/replies").addPathSegment(replyId).addPathSegment("result").build()
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $token")
+        val request = authorizedPost(url("v1", "replies", replyId, "result"), token, ProtocolJson.encodeToString(result))
             .header("Idempotency-Key", replyId)
-            .post(ProtocolJson.encodeToString(result).toRequestBody(JSON))
             .build()
         return exchange(request, replyResultTimeout) {}.duplicateAccepted()
     }
 
     /** Pairs with the watch showing the code; no bearer token, the code is the proof (TZ F1). */
     suspend fun completePairing(body: PairCompleteRequest): RelayOutcome<PairCompleteResponse> {
-        val request = Request.Builder()
-            .url(pairCompleteUrl)
-            .post(ProtocolJson.encodeToString(body).toRequestBody(JSON))
-            .build()
+        val request = post(pairCompleteUrl, ProtocolJson.encodeToString(body)).build()
         return exchange(request) { ProtocolJson.decodeFromString<PairCompleteResponse>(it) }
     }
 
     /** Replaces the FCM token of device [deviceId], the Companion that holds [token] (TZ §5.2). */
     suspend fun updatePushToken(token: String, deviceId: String, body: PushTokenRequest): RelayOutcome<Unit> {
-        val url = baseUrl.newBuilder().addPathSegments("v1/devices").addPathSegment(deviceId).addPathSegment("push-token").build()
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $token")
-            .post(ProtocolJson.encodeToString(body).toRequestBody(JSON))
+        val request = authorizedPost(url("v1", "devices", deviceId, "push-token"), token, ProtocolJson.encodeToString(body))
             .build()
         return exchange(request) {}
     }
+
+    /** The relay URL of the path [segments], each one escaped. */
+    private fun url(vararg segments: String): HttpUrl =
+        baseUrl.newBuilder().apply { segments.forEach { addPathSegment(it) } }.build()
+
+    /** A POST of the protocol [json] to [url]. */
+    private fun post(url: HttpUrl, json: String): Request.Builder =
+        Request.Builder().url(url).post(json.toRequestBody(JSON))
+
+    /** A POST of [json] to [url] with the Companion's device [token]. */
+    private fun authorizedPost(url: HttpUrl, token: String, json: String): Request.Builder =
+        post(url, json).header("Authorization", "Bearer $token")
 
     /**
      * Runs [request] and decodes a successful body with [decode]; a malformed one is rejected.
