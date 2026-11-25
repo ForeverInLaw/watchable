@@ -31,6 +31,14 @@ struct Reply: Encodable, Sendable {
 struct RelayClient: Sendable {
     let config: RelayConfig
 
+    /// Gives up on a reply 10 seconds after it starts, however the time is spent (TZ F3).
+    /// A request's own `timeoutInterval` only bounds the wait between two packets.
+    private static let replySession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForResource = 10
+        return URLSession(configuration: configuration)
+    }()
+
     /// Asks for a pairing code with the pairing secret; the open session on the relay closes.
     func startPairing(apnsToken: String, name: String) async throws(RelayError) -> PairingSession {
         struct Body: Encodable {
@@ -62,8 +70,7 @@ struct RelayClient: Sendable {
     func sendReply(_ reply: Reply, toEvent eventId: String, as credentials: Credentials) async throws(RelayError) {
         var request = post("v1/events/\(eventId)/reply", bearer: credentials.token, body: reply)
         request.setValue(reply.replyId, forHTTPHeaderField: "Idempotency-Key")
-        request.timeoutInterval = 10
-        _ = try await exchange(request)
+        _ = try await exchange(request, in: Self.replySession)
     }
 
     private func post(_ path: String, bearer: String, body: some Encodable) -> URLRequest {
@@ -82,12 +89,12 @@ struct RelayClient: Sendable {
         return request
     }
 
-    /// Sends `request` and returns the body of a 2xx answer.
-    private func exchange(_ request: URLRequest) async throws(RelayError) -> Data {
+    /// Sends `request` through `session` and returns the body of a 2xx answer.
+    private func exchange(_ request: URLRequest, in session: URLSession = .shared) async throws(RelayError) -> Data {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw .unreachable
         }
