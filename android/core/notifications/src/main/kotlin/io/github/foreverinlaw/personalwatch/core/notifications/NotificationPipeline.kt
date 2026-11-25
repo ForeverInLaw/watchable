@@ -6,7 +6,6 @@ import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Turns posted notifications into Notification events (TZ §4 F2, §7.3), or says why one is skipped.
@@ -16,24 +15,44 @@ class NotificationPipeline(
     private val ownPackage: String,
     private val newEventId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    private val recentPosts = RecentPosts<List<String?>>(DEDUP_WINDOW)
+    /**
+     * What each active notification last showed, so a repost that brings nothing new is dropped:
+     * apps re-post a notification on every update, and some re-post all of theirs at once.
+     */
+    private val shown = HashMap<String, ShownContent>()
 
     /** [activeNotifications] is read only when the group-summary rule needs it. */
     fun process(posted: PostedNotification, activeNotifications: () -> List<ActiveNotification>): PipelineResult {
         skipReason(posted, activeNotifications)?.let { return PipelineResult.Skip(it) }
-        val event = normalize(posted)
-        val content = listOf(event.title, event.body, event.subtext)
-        return if (recentPosts.recordAndCheckRepeat(posted.key, content, posted.postTime)) {
+        val content = posted.shownContent()
+        return if (shown.put(posted.key, content) == content) {
             PipelineResult.Skip(SkipReason.DUPLICATE)
         } else {
-            PipelineResult.Forward(event)
+            PipelineResult.Forward(normalize(posted))
         }
+    }
+
+    /** The notification with [key] left the shade, so a later post with the same content is new. */
+    fun forget(key: String) {
+        shown.remove(key)
+    }
+
+    /**
+     * The listener connected, at start or after an update or restart: what is in the shade now and
+     * would be mirrored counts as already shown, so its reposts are not mirrored again, and
+     * everything else is forgotten, as removals are not reported while the listener is unbound.
+     */
+    fun syncWithShade(active: List<PostedNotification>) {
+        val shade = active.map { it.asActive() }
+        shown.clear()
+        active.filter { skipReason(it) { shade } == null }.associateTo(shown) { it.key to it.shownContent() }
     }
 
     private fun skipReason(posted: PostedNotification, activeNotifications: () -> List<ActiveNotification>): SkipReason? =
         when {
             posted.packageName == ownPackage -> SkipReason.OWN
             posted.isOngoing -> SkipReason.ONGOING
+            !posted.isClearable -> SkipReason.NOT_CLEARABLE
             posted.category == CATEGORY_CALL -> SkipReason.CALL
             posted.isGroupSummary && activeNotifications().any { it.isChildOf(posted) } -> SkipReason.SUMMARY_WITH_CHILDREN
             else -> null
@@ -67,20 +86,31 @@ class NotificationPipeline(
     }
 }
 
+/**
+ * What a post shows, for dedup (TZ §4 F2). The chat's messages tell a new message apart from a
+ * repost when both carry the same text.
+ */
+private data class ShownContent(val title: String?, val body: String?, val subtext: String?, val messages: List<Message>?)
+
+private fun PostedNotification.shownContent() =
+    ShownContent(displayTitle(), displayBody(), subText.cleaned(), conversation?.messages)
+
 /** A chat is titled by its conversation, or by whoever wrote last in a direct chat. */
 private fun PostedNotification.displayTitle(): String? {
     val conversation = conversation ?: return title.cleaned()
-    return conversation.title.cleaned() ?: conversation.messages.lastOrNull()?.sender.cleaned() ?: title.cleaned()
+    return conversation.title.cleaned() ?: lastMessage?.sender.cleaned() ?: title.cleaned()
 }
 
 /** A chat shows its latest message; in a group chat the body names the sender. */
 private fun PostedNotification.displayBody(): String? {
-    val conversation = conversation
-    val last = conversation?.messages?.lastOrNull() ?: return bigText.cleaned() ?: text.cleaned()
+    val last = lastMessage ?: return bigText.cleaned() ?: text.cleaned()
     val sender = last.sender.cleaned()
     val text = last.text.cleaned()
-    return if (conversation.isGroup && sender != null) "$sender: ${text.orEmpty()}" else text
+    return if (conversation?.isGroup == true && sender != null) "$sender: ${text.orEmpty()}" else text
 }
+
+private val PostedNotification.lastMessage: Message?
+    get() = conversation?.messages?.lastOrNull()
 
 private const val REPLY_ACTION_ID = "reply"
 
@@ -93,9 +123,6 @@ private fun String?.cleaned(): String? {
     val codePoints = codePoints().map { if (it in Char.MIN_SURROGATE.code..Char.MAX_SURROGATE.code) 0xFFFD else it }.toArray()
     return String(codePoints, 0, codePoints.size)
 }
-
-/** A repost of the same key and text within this window is a duplicate (TZ §4 F2). */
-private val DEDUP_WINDOW = 5.seconds
 
 /** Notification.CATEGORY_CALL: calls are out of scope (TZ §1.3). */
 private const val CATEGORY_CALL = "call"
@@ -110,11 +137,14 @@ enum class SkipReason {
     /** Posted by the Companion itself. */
     OWN,
     ONGOING,
+
+    /** Cannot be dismissed: an app's status while it works in the background, not a message. */
+    NOT_CLEARABLE,
     CALL,
 
     /** The children of the group are shown instead (TZ §4 F2). */
     SUMMARY_WITH_CHILDREN,
 
-    /** Same key and text as a post less than 5 seconds earlier. */
+    /** Same key and content as the last post of a notification that is still active (TZ §4 F2). */
     DUPLICATE,
 }
