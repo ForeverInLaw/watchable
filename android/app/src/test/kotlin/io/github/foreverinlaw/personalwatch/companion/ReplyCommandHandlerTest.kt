@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Process
 import android.service.notification.StatusBarNotification
 import io.github.foreverinlaw.personalwatch.core.protocol.ReplyExecute
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyFailure
+import io.github.foreverinlaw.personalwatch.core.protocol.ReplyResult
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,7 +57,7 @@ class ReplyCommandHandlerTest {
 
         val outcome = handler(sbn).execute(reply(sbn.key))
 
-        assertEquals(ReplyOutcome.SENT, outcome)
+        assertEquals(ReplyResult.Sent, outcome)
         val sent = sentBroadcasts().single()
         assertEquals("reply", sent.action)
         assertEquals("Ок", RemoteInput.getResultsFromIntent(sent)?.getCharSequence("reply_text")?.toString())
@@ -68,7 +70,7 @@ class ReplyCommandHandlerTest {
 
         val outcome = handler(sbn).execute(reply("0|com.whatsapp|999|null|10001"))
 
-        assertEquals(ReplyOutcome.NOTIFICATION_GONE, outcome)
+        assertEquals(ReplyResult.Failed(ReplyFailure.NOTIFICATION_GONE), outcome)
         assertEquals(emptyList<Intent>(), sentBroadcasts())
     }
 
@@ -79,7 +81,17 @@ class ReplyCommandHandlerTest {
 
         val outcome = handler(sbn).execute(reply(sbn.key))
 
-        assertEquals(ReplyOutcome.REMOTE_INPUT_UNSUPPORTED, outcome)
+        assertEquals(ReplyResult.Failed(ReplyFailure.REMOTE_INPUT_UNSUPPORTED), outcome)
+        assertEquals(emptyList<Intent>(), sentBroadcasts())
+    }
+
+    @Test
+    fun `without a connected notification listener the notification is gone`() {
+        val sbn = posted(action("Reply", "reply", RemoteInput.Builder("reply_text").build()))
+
+        val outcome = ReplyCommandHandler(context, ActiveNotifications()::find).execute(reply(sbn.key))
+
+        assertEquals(ReplyResult.Failed(ReplyFailure.NOTIFICATION_GONE), outcome)
         assertEquals(emptyList<Intent>(), sentBroadcasts())
     }
 }
