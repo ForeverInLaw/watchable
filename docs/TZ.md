@@ -1206,7 +1206,7 @@ watch.example.com {
 
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`.
-  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
+  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/`, `protocol/` (тесты relay проверяют примеры по схемам) или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/`, сам workflow или его action `.github/actions/xcodegen`. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
   - Номер сборки (`CURRENT_PROJECT_VERSION`) — `github.run_number` workflow `watch`; он растёт и на PR-запусках, поэтому в TestFlight номера идут с пропусками. Перезапуск уже выгруженного run App Store Connect отклонит как дубликат — нужен новый запуск. Переименование `watch.yml` обнулит счётчик — тогда к номеру нужно прибавить смещение. Выгрузки идут по одной (общая concurrency-группа job), чтобы меньший номер не пришёл после большего.

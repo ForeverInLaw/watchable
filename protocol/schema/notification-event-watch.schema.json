@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Notification event for the Watch app",
+  "description": "A Notification event as the relay serves it to the Watch app in GET /v1/events (docs/TZ.md §5.4). The relay cuts body to 3000 code points; body_truncated tells the watch to fetch the full text from GET /v1/events/{id}.",
+  "$ref": "notification-event.schema.json#/$defs/fields",
+  "required": ["body_truncated"],
+  "properties": {
+    "body": { "type": ["string", "null"], "maxLength": 3000 },
+    "body_truncated": { "type": "boolean" }
+  },
+  "if": {
+    "required": ["body_truncated"],
+    "properties": { "body_truncated": { "const": true } }
+  },
+  "then": {
+    "description": "Only a body longer than the limit is cut, so a cut body fills it.",
+    "properties": { "body": { "type": "string", "minLength": 3000 } }
+  },
+  "unevaluatedProperties": false
+}
