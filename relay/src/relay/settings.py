@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import DirectoryPath, Field, PositiveInt, SecretStr
+from pydantic import DirectoryPath, Field, PositiveInt, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 # The repo-root protocol/ directory, next to relay/ in a source checkout.
@@ -21,3 +21,11 @@ class RelaySettings(BaseSettings):
     retention_days: PositiveInt = 7
     # JSON schemas the relay validates request bodies against.
     protocol_dir: DirectoryPath = SOURCE_PROTOCOL_DIR
+
+    @field_validator("pairing_secret")
+    @classmethod
+    def secret_fits_a_header(cls, secret: SecretStr) -> SecretStr:
+        """Rejects a secret the watch could not send intact in `Authorization: Bearer`."""
+        if not all("!" <= char <= "~" for char in secret.get_secret_value()):
+            raise ValueError("use printable ASCII without spaces, e.g. openssl rand -base64 32")
+        return secret

@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import Depends, Header, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.exceptions import HTTPException
 
@@ -89,7 +90,7 @@ class Relay:
     """What the routes use, built once per app run inside its event loop."""
 
     engine: AsyncEngine
-    pairing_secret: bytes
+    pairing_secret: SecretStr
     devices: DeviceRegistry
     pairing: Pairing
     pair_start_limit: RateLimit
@@ -171,7 +172,8 @@ CurrentAndroid = Annotated[Device, Depends(require_android)]
 def require_pairing_secret(relay: CurrentRelay, secret: BearerToken) -> None:
     """Admits pair/start only with the PAIRING_SECRET the watch build carries."""
     # Bytes, because compare_digest refuses str with non-ASCII characters.
-    if secret is None or not secrets.compare_digest(secret.encode(), relay.pairing_secret):
+    expected = relay.pairing_secret.get_secret_value().encode()
+    if secret is None or not secrets.compare_digest(secret.encode(), expected):
         raise ApiError(
             status.HTTP_401_UNAUTHORIZED,
             "invalid_pairing_secret",
