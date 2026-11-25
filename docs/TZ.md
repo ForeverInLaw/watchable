@@ -408,7 +408,8 @@ Relay:
   ```json
   {"error":{"code":"...","message":"...","retryable":true}}
   ```
-- HTTP-коды: 200, 201, 202, 204, 400, 401, 403, 404, 409, 429, 500, 503.
+  Схема: `protocol/schema/error.schema.json`. `message` не повторяет содержимое запроса.
+- HTTP-коды: 200, 201, 202, 204, 400, 401, 403, 404, 409, 413, 429, 500, 503.
 - Retry: экспоненциальный backoff с jitter, максимум 5 минут.
 - Rate limit: 120 событий/мин, 30 ответов/мин, 60 команд/мин.
 
@@ -483,7 +484,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 ```
 
 Правила:
-- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля — `400 invalid_request`.
+- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля и строки с одиночными суррогатами (`\ud800` в JSON), которые нельзя записать в UTF-8, — `400 invalid_request`.
 - Companion присылает `body` целиком, его ограничивает только размер тела (§5.1). Relay хранит полный текст в `body_full` (§6.1). Если он длиннее 3000 символов (Unicode code points), relay отдаёт часам первые 3000 и `body_truncated: true`, а полный текст — через `GET /v1/events/{id}`.
 - `posted_at` — RFC3339 UTC с суффиксом `Z`.
 - `notification_key` обязателен для reply.
@@ -491,12 +492,18 @@ Companion отправляет событие телом `POST /v1/events/notifi
 - `actions` — только действия, которые можно выполнить, может быть пустым; MVP — reply (`type: text`).
 - Схемы: `protocol/schema/notification-event.schema.json` (Companion → relay) и `notification-event-watch.schema.json` (relay → Watch app).
 
+Ответы `POST /v1/events/notification`:
+- `202` без тела — событие сохранено, APNs принял пуш.
+- `409 duplicate` — APNs уже принимал пуш с этим `event_id`; второго пуша нет.
+- `503 apns_unavailable` или `503 apns_rejected` с `retryable: true` — APNs недоступен, троттлит (429) или отвечает 5xx. Событие сохранено, но пуш не принят: повтор с тем же `event_id` отправляет пуш снова.
+- `500 apns_rejected` с `retryable: false` — APNs отклонил пуш (например, `BadDeviceToken`).
+
 ### 5.5 APNs payload
 
 ```json
 {
   "aps": {
-    "alert": {"title": "WhatsApp", "body": "Привет"},
+    "alert": {"title": "WhatsApp · Alice", "body": "Привет"},
     "sound": "default",
     "category": "MESSAGE_REPLY",
     "thread-id": "com.whatsapp",
@@ -508,6 +515,8 @@ Companion отправляет событие телом `POST /v1/events/notifi
 }
 ```
 
+- `title` — `source_app · title`: приложение и отправитель, например «Telegram · Алиса». Без `source_app` — `source_package`; без `title` — только приложение.
+- `body` — `body` события; при `body: null` поля нет, и alert показывает только заголовок.
 - `category: MESSAGE_REPLY` — только при `replyable: true`; у остальных уведомлений поля нет.
 - `thread-id` = `source_package`: уведомления одного приложения группируются на часах.
 
@@ -521,7 +530,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 
 Ограничения:
 - payload ≤ 4 КБ;
-- если текст длиннее — relay обрезает его, полный текст доступен через `GET /v1/events/{id}`; тестовый скрипт M0 не обрезает, и APNs отклоняет такой пуш с `PayloadTooLarge`;
+- если payload длиннее — relay и тестовый скрипт обрезают `alert.body` до самого длинного начала, с которым payload в UTF-8 JSON с `…` в конце укладывается в 4 КБ; если не помещается даже заголовок с `…` вместо тела, тело убирается и так же обрезается `alert.title`; полный текст доступен через `GET /v1/events/{id}`;
 - для фоновой синхронизации — `apns-push-type: background`, `content-available: 1`, priority 5; не гарантируется.
 
 ### 5.6 Reply
@@ -606,8 +615,9 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `403 forbidden` — не retry.
 - `404 not_found` — не retry.
 - `409 duplicate` — считать успехом.
+- `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
 - `429 rate_limited` — retry с `Retry-After`.
-- `500/503` — retry.
+- `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
 - FCM: `UNREGISTERED` — пометить токен; `QUOTA_EXCEEDED` — backoff.
 

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "duplicate",
+    "message": "Event already delivered",
+    "retryable": false
+  }
+}

@@ -1,11 +1,14 @@
 """APNs delivery of watch alerts: payload and headers per docs/TZ.md §5.5."""
 
+import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, Self
 
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
+from aioapns.exceptions import MaxAttemptsExceeded
 from pydantic import FilePath, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +16,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPLY_CATEGORY = "MESSAGE_REPLY"
 # apns-priority for immediate delivery (aioapns.PRIORITY_HIGH is a str, the field an int).
 ALERT_PRIORITY = 10
+# Seconds APNs keeps a push while the watch is offline (TZ §5.5).
+DEFAULT_TTL_SECONDS = 3600
+# APNs refuses a larger alert payload with PayloadTooLarge.
+MAX_PAYLOAD_BYTES = 4096
+# Ends an alert body cut to fit; the full text stays on the relay.
+ELLIPSIS = "…"
 
 
 class ApnsSettings(BaseSettings):
@@ -42,15 +51,34 @@ class AlertPush:
     """A user-visible notification mirrored to the watch."""
 
     title: str
-    body: str
+    body: str | None
     source_package: str
     event_id: str
     replyable: bool
 
     def to_payload(self) -> dict[str, Any]:
-        """APNs JSON body. Alerts from one app share a thread on the watch."""
+        """APNs JSON body, cut to fit MAX_PAYLOAD_BYTES (TZ §5.5).
+
+        The body is cut first. A title too long to fit even with an empty body is cut
+        as well, and the body is dropped. Alerts from one app share a thread on the watch.
+        """
+        payload = self._payload(self.title, self.body)
+        if payload_size(payload) <= MAX_PAYLOAD_BYTES:
+            return payload
+        if self.body is not None:
+            body = cut_to_fit(self.body, lambda body: self._payload(self.title, body))
+            if body is not None:
+                return self._payload(self.title, body)
+        title = cut_to_fit(self.title, lambda title: self._payload(title, None))
+        # None only when source_package alone overflows; APNs then refuses the push.
+        return self._payload(title or ELLIPSIS, None)
+
+    def _payload(self, title: str, body: str | None) -> dict[str, Any]:
+        alert = {"title": title}
+        if body is not None:
+            alert["body"] = body
         aps: dict[str, Any] = {
-            "alert": {"title": self.title, "body": self.body},
+            "alert": alert,
             "sound": "default",
             "thread-id": self.source_package,
             "interruption-level": "active",
@@ -65,6 +93,29 @@ class AlertPush:
         }
 
 
+def cut_to_fit(text: str, build: Callable[[str], dict[str, Any]]) -> str | None:
+    """The longest prefix of `text`, ending in the ellipsis, whose payload fits.
+
+    None when even the ellipsis alone does not fit. JSON escapes make the size uneven
+    per character, so this searches over code points rather than computes.
+    """
+    if payload_size(build(ELLIPSIS)) > MAX_PAYLOAD_BYTES:
+        return None
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if payload_size(build(text[:middle] + ELLIPSIS)) <= MAX_PAYLOAD_BYTES:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low] + ELLIPSIS
+
+
+def payload_size(payload: dict[str, Any]) -> int:
+    """Bytes APNs counts: aioapns sends json.dumps(payload, ensure_ascii=False) as UTF-8."""
+    return len(json.dumps(payload, ensure_ascii=False).encode())
+
+
 @dataclass(frozen=True, slots=True)
 class PushResult:
     """APNs answer to one push: the apns-id, HTTP status and rejection reason."""
@@ -76,6 +127,20 @@ class PushResult:
     @property
     def ok(self) -> bool:
         return self.status == 200
+
+    @property
+    def retryable(self) -> bool:
+        """Throttling and APNs outages pass; a rejected token or payload does not."""
+        return self.status == 429 or self.status >= 500
+
+
+class ApnsUnreachable(Exception):
+    """aioapns ran out of connection attempts; the push was not delivered."""
+
+
+def join_token_groups(token: str) -> str:
+    """The device token without the spaces the watch app shows between its groups."""
+    return "".join(token.split())
 
 
 class ApnsClient(Protocol):
@@ -109,7 +174,10 @@ class ApnsSender:
             priority=ALERT_PRIORITY,
             push_type=PushType.ALERT,
         )
-        result = await self._client.send_notification(request)
+        try:
+            result = await self._client.send_notification(request)
+        except MaxAttemptsExceeded as error:
+            raise ApnsUnreachable from error
         return PushResult(
             apns_id=result.notification_id,
             status=int(result.status),

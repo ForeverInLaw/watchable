@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import pytest
-from aioapns import NotificationRequest
 from aioapns.common import NotificationResult
 from aioapns.exceptions import MaxAttemptsExceeded
 
@@ -108,16 +107,12 @@ def test_missing_key_file_names_the_variable(
     assert "APNS_KEY_PATH" in capsys.readouterr().err
 
 
-class UnreachableClient:
-    """Behaves like aioapns.APNs after it has run out of connection attempts."""
-
-    async def send_notification(self, request: NotificationRequest) -> NotificationResult:
-        raise MaxAttemptsExceeded
-
-
 def test_unreachable_apns_fails_with_one_line(capsys: pytest.CaptureFixture[str]) -> None:
+    unreachable = FakeApnsClient(NotificationResult("abc", "200"))
+    unreachable.error = MaxAttemptsExceeded()
+
     with pytest.raises(SystemExit) as exit_info:
-        main([TOKEN], connect=lambda _settings: ApnsSender(UnreachableClient()))
+        main([TOKEN], connect=lambda _settings: ApnsSender(unreachable))
 
     assert exit_info.value.code == 1
     assert "APNs unreachable" in capsys.readouterr().err
