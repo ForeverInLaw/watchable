@@ -209,34 +209,37 @@ BLE не используется для основного потока уве�
 
 ### F1. Pairing
 
-- Watch app при первом запуске вызывает `POST /v1/pair/start`.
-- Передаёт: `platform=watchos`, `apns_token`, `public_key`, `name`.
-- Relay создаёт watch-устройство с provisional-токеном и возвращает:
+- Watch app при первом запуске получает APNs-токен и вызывает `POST /v1/pair/start` без Bearer-токена.
+- Передаёт: `platform=watchos`, `apns_token` (обязателен), `name` (опционально).
+- Relay создаёт watch-устройство с его токеном и возвращает:
   - `pairing_id`
   - `pairing_code` (8 цифр)
+  - `watch_device_id` — для `POST /v1/devices/{id}/push-token`
   - `watch_device_token` (32 байта, base64url)
-  - `expires_at` (10 минут)
+  - `expires_at` (+10 минут)
 - Watch app сохраняет `watch_device_token` в Keychain и показывает код крупным шрифтом.
+- Активная сессия одна: новый `pair/start` гасит прежнюю, её код больше не принимается. `pair/start` relay принимает не чаще 10 раз в минуту, дальше `429` с `Retry-After`.
 - Пользователь вводит код в Companion.
-- Companion вызывает `POST /v1/pair/complete`:
+- Companion вызывает `POST /v1/pair/complete` без Bearer-токена:
   - `pairing_code`
   - `platform=android`
-  - `fcm_token`
-  - `public_key`
-  - `name`
-- Relay связывает устройства, возвращает:
+  - `fcm_token` — опционально, до FCM в M3
+  - `name` — опционально
+- Relay связывает устройства и возвращает:
   - `android_device_id`
   - `android_device_token` (32 байта, base64url)
   - `watch_device_id`
-  - `watch_public_key`
-- Relay отправляет APNs «Paired» на часы.
-- Watch app либо принимает APNs, либо опрашивает `GET /v1/pair/status?pairing_id=...` с `watch_device_token` до `paired=true`.
-- Companion сохраняет токен в `EncryptedSharedPreferences`; watch app — в Keychain.
-- Relay URL зашит в build config обоих приложений; для личного проекта настройка в UI не обязательна.
-- Код одноразовый; повторная пара сбрасывает старые токены.
+- Неверный, истёкший, уже использованный или сгоревший код — `400 invalid_pairing_code`, причина не различается. Пятый неверный код сжигает сессию: часам нужен новый `pair/start`.
+- Успешный `pair/complete` отзывает все прежние устройства: старый телефон и старые часы получают `401`. Unpair и удаление данных при unpair — не в M2.
+- Пока виден код, watch app раз в 2 секунды опрашивает `GET /v1/pair/status?pairing_id=...` с `watch_device_token`: `{"paired": false}`, затем `{"paired": true}`. Если сессия истекла, сгорела или её погасил новый `pair/start`, relay отвечает `404 pairing_expired`, и часы начинают заново. APNs «Paired» не отправляется.
+- При каждом запуске watch app отправляет APNs-токен в `POST /v1/devices/{id}/push-token`, если он сменился.
+- Companion хранит device id и токен в DataStore (§6.2); watch app — в Keychain.
+- Relay URL зашит в build config обоих приложений: часы получают его из переменной GitHub при сборке, Companion — из `android/local.properties`. URL стабильный: named tunnel Cloudflare.
 - Если часы не в сети, pairing не начинается; показать «Подключите часы к Wi-Fi или iPhone».
 
-**Acceptance:** после pairing тестовое уведомление доходит до часов; повторный ввод кода отклоняется.
+Схемы запросов и ответов: `protocol/schema/pair-*.schema.json`, `push-token-request.schema.json`.
+
+**Acceptance:** после pairing тестовое уведомление доходит до часов; повторный ввод кода отклоняется; re-pair отзывает старые токены.
 
 ### F2. Notification mirroring
 
@@ -261,7 +264,7 @@ BLE не используется для основного потока уве�
   - `group_key` — ключ группы, только если приложение или системная автогруппировка сгруппировали уведомление, иначе `null`;
   - `actions` — первое действие со свободным текстом как `{"id": "reply", "type": "text"}`.
   - `posted_at` — `postTime` с точностью до секунды, как в примерах протокола.
-- До pairing (M2) URL relay и статический токен берутся при сборке из `android/local.properties` (`relay.url`, `relay.token`); без них приложение собирается и показывает «Relay не настроен».
+- URL relay берётся при сборке из `android/local.properties` (`relay.url`); без него приложение собирается и показывает «Relay не настроен». Bearer-токен Companion получает при pairing (F1).
 - До Room (§6.2) неотправленные события живут только в памяти и уходят по одному в порядке публикации: до 12 попыток с backoff из §5.1 (`Retry-After` тоже не больше 5 минут), затем событие отбрасывается.
 - Отправлять `POST /v1/events/notification`.
 - Relay:
@@ -425,13 +428,15 @@ Relay:
 
 ### 5.2 Аутентификация
 
-- Pairing code: 8 цифр, TTL 10 минут, одноразовый.
-- Device token: 32 байта, base64url; хранится на сервере как SHA-256.
-- При re-pair старые токены инвалидируются.
+- Pairing code: 8 цифр, TTL 10 минут, одноразовый; на сервере только SHA-256.
+- Против перебора: одна активная сессия (новый `pair/start` гасит прежнюю), 5 неверных `pair/complete` сжигают её, `pair/start` не чаще 10 раз в минуту на relay.
+- Device token: 32 байта, base64url; хранится на сервере как SHA-256. `pair/start` и `pair/complete` идут без Bearer, остальные эндпоинты — с токеном устройства.
+- `POST /v1/events/notification` принимает только токен спаренного Companion; токен часов, отозванный или неизвестный токен — `401 invalid_token`.
+- При re-pair старые токены инвалидируются: успешный `pair/complete` отзывает все прежние устройства.
 - Опционально: HMAC-SHA256 для BLE и критичных запросов.
   - `X-Timestamp`, `X-Signature`.
   - Окно 5 минут.
-- APNs/FCM токены обновляются через `POST /v1/devices/{id}/push-token`.
+- APNs/FCM токены обновляются через `POST /v1/devices/{id}/push-token`, `204`; `{id}` чужого устройства — `403 forbidden`. Среда APNs одна на relay (`APNS_USE_SANDBOX`, §9.3).
 
 ### 5.3 Envelope
 
@@ -621,12 +626,14 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 ### 5.10 Ошибки и retry
 
 - `400 invalid_request` — не retry.
+- `400 invalid_pairing_code` — код неверный, истёк, использован или сгорел (F1); пользователь вводит код с часов заново.
 - `401 invalid_token` — re-pair.
 - `403 forbidden` — не retry.
 - `404 not_found` — не retry.
+- `404 pairing_expired` — сессия pairing закончилась (F1); часы вызывают `pair/start` заново.
 - `409 duplicate` — считать успехом.
 - `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
-- `429 rate_limited` — retry с `Retry-After`; relay передаёт его в секундах, HTTP-дату не использует.
+- `429 rate_limited` — retry с `Retry-After` (в том числе `pair/start` сверх 10 в минуту); relay передаёт его в секундах, HTTP-дату не использует.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
@@ -666,20 +673,22 @@ devices(
   name TEXT,
   platform TEXT NOT NULL,
   push_token TEXT,                 -- APNs or FCM
-  push_environment TEXT,           -- sandbox | production
-  public_key TEXT,
-  token_hash TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE, -- SHA-256 of the device token
   created_at TEXT NOT NULL,
   last_seen_at TEXT,
   revoked_at TEXT
 )
 
 pairing_sessions(
-  code_hash TEXT PRIMARY KEY,
-  watch_device_id TEXT,
-  android_device_id TEXT,
+  id TEXT PRIMARY KEY,             -- pairing_id
+  watch_device_id TEXT NOT NULL,
+  code_hash TEXT NOT NULL,         -- SHA-256 of the code
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  android_device_id TEXT,          -- set with used_at
+  created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  used_at TEXT
+  used_at TEXT,
+  closed_at TEXT                   -- replaced by a new pair/start or burned by 5 wrong codes
 )
 
 notification_events(
@@ -757,6 +766,8 @@ outbox(
 )
 ```
 
+`public_key` вернётся опциональным полем вместе с BLE (§5.11); `push_environment` не хранится, среда APNs одна на relay.
+
 Индексы:
 - `notification_events(android_device_id, created_at)`;
 - `deliveries(status, next_attempt_at)`;
@@ -773,7 +784,8 @@ Retention:
 
 - `NotificationEntity` — последние 200 событий для reply.
 - `HealthEntity` — здоровье.
-- `SettingsEntity` — blocklist, relay URL, device id.
+- `SettingsEntity` — blocklist.
+- DataStore — device id и device token из pairing (F1), в приватном хранилище приложения, исключённом из бэкапа (`dataExtractionRules`, §10). `EncryptedSharedPreferences` не используется: он задепрекейчен в `security-crypto` 1.1.0.
 - `PendingEventEntity` — очередь при офлайне.
 
 ### 6.3 Watch app
@@ -885,8 +897,8 @@ android/
 
 ### 7.8 Настройки
 
-- Relay URL.
-- Pairing.
+- Relay URL — из сборки, только показ.
+- Pairing — ввод кода с часов (F1); повторный pairing отзывает прежние устройства.
 - Notification access.
 - Battery optimization.
 - Blocklist.
@@ -1121,7 +1133,7 @@ watch.example.com {
 - TLS 1.2+; HSTS; Caddy.
 - APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600.
 - Device tokens — SHA-256 на сервере.
-- Pairing code — rate limit, TTL, one-time.
+- Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
 - HMAC для BLE обязателен; для HTTP — опционально.
 - Шифрование notification text at rest:
   - AES-GCM с ключом `DATA_KEY` из env;
@@ -1129,10 +1141,10 @@ watch.example.com {
   - ключ не в репозитории.
 - Логи без текста уведомлений.
 - Retention: 7/30 дней.
-- Удаление данных при unpair.
+- Удаление данных при unpair (после M2).
 - Backup encrypted.
 - Нет аналитики, Crashlytics, сторонних SDK, кроме FCM/APNs.
-- Не использовать `android:allowBackup="true"` для чувствительных данных; `dataExtractionRules`.
+- Не использовать `android:allowBackup="true"` для чувствительных данных; `dataExtractionRules`. Device token Companion лежит в DataStore, исключённом из бэкапа и переноса.
 - Watch app: Keychain для токена; `NSFileProtectionComplete`.
 
 ---
