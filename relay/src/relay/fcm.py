@@ -103,8 +103,13 @@ class FcmResult:
 
 
 class FcmUnreachable(Exception):
-    """The relay got no answer from FCM, or no access token from Google. FCM may still have
-    taken a message whose answer was lost, such as on a read timeout."""
+    """The relay got no answer from FCM, or no access token from Google for now. FCM may
+    still have taken a message whose answer was lost, such as on a read timeout."""
+
+
+class ServiceAccountRefused(Exception):
+    """Google refused the relay's service account, so no message reaches FCM until an
+    operator fixes FCM_SERVICE_ACCOUNT_PATH."""
 
 
 def envelope(
@@ -137,7 +142,8 @@ class FcmSender:
     async def send(self, registration_token: str, data: Mapping[str, str]) -> FcmResult:
         """Delivers `data` at high priority: every message so far is one the user waits on.
 
-        Raises FcmUnreachable when FCM does not answer or Google gives no access token.
+        Raises FcmUnreachable when FCM does not answer or Google's token endpoint fails,
+        ServiceAccountRefused when Google refuses the service account.
         """
         message = {
             "token": registration_token,
@@ -150,9 +156,13 @@ class FcmSender:
                 json={"message": message},
                 headers={"Authorization": f"Bearer {await self._tokens.get()}"},
             )
-        # GoogleAuthError covers an unreachable token endpoint and a refused service account.
-        except (httpx2.HTTPError, google.auth.exceptions.GoogleAuthError) as error:
+        except httpx2.HTTPError as error:
             raise FcmUnreachable from error
+        except google.auth.exceptions.GoogleAuthError as error:
+            # google-auth marks a token endpoint failure that may pass as retryable.
+            if isinstance(error, google.auth.exceptions.TransportError) or error.retryable:
+                raise FcmUnreachable from error
+            raise ServiceAccountRefused from error
         if response.status_code == 200:
             return FcmResult(status=200, error=None)
         return FcmResult(status=response.status_code, error=error_code(response))

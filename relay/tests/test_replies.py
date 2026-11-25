@@ -6,6 +6,7 @@ import sqlite3
 import uuid
 from typing import Any
 
+import google.auth.exceptions
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
@@ -24,7 +25,7 @@ from tests.conftest import (
     post_event,
     start_pairing,
 )
-from tests.fakes import FakeClock, FakeFcmEndpoint
+from tests.fakes import FakeClock, FakeFcmEndpoint, FakeTokens
 
 REPLY: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-request.json")
 # A Companion built without Firebase pairs without an FCM token.
@@ -342,6 +343,25 @@ def test_an_unreachable_fcm_fails_the_reply_and_may_be_retried(
     assert error_of(response)["code"] == "fcm_unavailable"
     assert error_of(response)["retryable"] is True
     assert outcome_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
+
+
+def test_a_refused_service_account_fails_the_reply_for_good(
+    client: TestClient,
+    settings: RelaySettings,
+    fcm: FakeFcmEndpoint,
+    fcm_tokens: FakeTokens,
+    paired: Pair,
+) -> None:
+    post_event(client, paired.android_token)
+    fcm_tokens.error = google.auth.exceptions.RefreshError("invalid_grant: account not found")
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 503
+    assert error_of(response)["code"] == "fcm_rejected"
+    assert error_of(response)["retryable"] is False
+    assert outcome_of(settings) == ("failed", "fcm_rejected", "2026-11-25T12:00:00Z")
+    assert fcm.requests == []
 
 
 def test_a_reply_resent_after_a_transient_fcm_error_is_a_duplicate(

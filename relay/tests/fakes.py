@@ -82,12 +82,16 @@ class FakeTokenEndpoint(google.auth.transport.Request):
 
 
 class FakeTokens:
-    """An access token source that always has `token`."""
+    """An access token source that has `token`, or raises `error` when it is set, as
+    google-auth does when Google's token endpoint fails or refuses the service account."""
 
     def __init__(self, token: str) -> None:
         self.token = token
+        self.error: Exception | None = None
 
     async def get(self) -> str:
+        if self.error is not None:
+            raise self.error
         return self.token
 
 

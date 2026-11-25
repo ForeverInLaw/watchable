@@ -658,8 +658,8 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `429 rate_limited` — retry с `Retry-After` (в том числе `pair/start` сверх 10 в минуту); relay передаёт его в секундах, HTTP-дату не использует.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - `503 fcm_token_missing` — у спаренного Companion нет FCM-токена: он его не прислал, или FCM назвал прежний `UNREGISTERED`; не retry, Companion присылает новый токен (§7.5).
-- `503 fcm_rejected` — FCM отклонил сообщение, например `UNREGISTERED` или `INVALID_ARGUMENT`; не retry.
-- `503 fcm_unavailable` — FCM недоступен или перегружен: нет связи, `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429 или 5xx. Повтор может пройти, но только как новый reply: тот же `reply_id` получает `409 duplicate`. Часы ответы не повторяют (F3).
+- `503 fcm_rejected` — FCM отклонил сообщение, например `UNREGISTERED` или `INVALID_ARGUMENT`, или Google не принял service account relay; не retry.
+- `503 fcm_unavailable` — FCM недоступен или перегружен: нет связи с FCM или с выдачей токенов Google, `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429 или 5xx. Повтор может пройти, но только как новый reply: тот же `reply_id` получает `409 duplicate`. Часы ответы не повторяют (F3).
 - 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
 - FCM: `UNREGISTERED` — relay забывает FCM-токен Companion, если тот ещё не сменился; `QUOTA_EXCEEDED` и другие временные ошибки — `503 fcm_unavailable`; relay сам сообщение не повторяет.
@@ -1118,7 +1118,7 @@ watch/
     }
   }
   ```
-- Обработка ошибок (§5.10): нет FCM-токена — `503 fcm_token_missing`; `UNREGISTERED` — забыть токен, `503 fcm_rejected`; `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429, 5xx и нет связи — `503 fcm_unavailable`; прочие отказы — `503 fcm_rejected`. В каждом случае reply получает `failed` с этим кодом.
+- Обработка ошибок (§5.10): нет FCM-токена — `503 fcm_token_missing`; `UNREGISTERED` — забыть токен, `503 fcm_rejected`; `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429, 5xx и нет связи с FCM или с выдачей токенов Google — `503 fcm_unavailable`; отказ Google принять service account и прочие отказы — `503 fcm_rejected`. В каждом случае reply получает `failed` с этим кодом.
 - Размер `data`: не больше 4096 байт вместе с ключами; relay проверяет его до отправки (§5.6).
 
 ### 9.5 Outbox worker

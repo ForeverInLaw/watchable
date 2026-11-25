@@ -47,10 +47,16 @@ def fcm() -> FakeFcmEndpoint:
     return FakeFcmEndpoint()
 
 
-def fcm_sender(fcm: FakeFcmEndpoint) -> FcmSender:
-    """A real FcmSender whose HTTP requests reach `fcm` instead of Google."""
+@pytest.fixture
+def fcm_tokens() -> FakeTokens:
+    return FakeTokens(FCM_ACCESS_TOKEN)
+
+
+def fcm_sender(fcm: FakeFcmEndpoint, tokens: FakeTokens | None = None) -> FcmSender:
+    """A real FcmSender whose HTTP requests reach `fcm` instead of Google, with access
+    tokens from `tokens` or, by default, always FCM_ACCESS_TOKEN."""
     http = httpx2.AsyncClient(transport=httpx2.MockTransport(fcm))
-    return FcmSender(http, FakeTokens(FCM_ACCESS_TOKEN), FCM_PROJECT_ID)
+    return FcmSender(http, tokens or FakeTokens(FCM_ACCESS_TOKEN), FCM_PROJECT_ID)
 
 
 @pytest.fixture
@@ -63,12 +69,16 @@ def settings(tmp_path: Path) -> RelaySettings:
 
 @pytest.fixture
 def client(
-    settings: RelaySettings, apns: FakeApnsClient, fcm: FakeFcmEndpoint, clock: FakeClock
+    settings: RelaySettings,
+    apns: FakeApnsClient,
+    fcm: FakeFcmEndpoint,
+    fcm_tokens: FakeTokens,
+    clock: FakeClock,
 ) -> Iterator[TestClient]:
     app = create_app(
         settings,
         connect_apns=lambda: ApnsSender(apns),
-        connect_fcm=lambda: fcm_sender(fcm),
+        connect_fcm=lambda: fcm_sender(fcm, fcm_tokens),
         clock=clock,
     )
     with TestClient(app) as test_client:

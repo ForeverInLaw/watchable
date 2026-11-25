@@ -7,9 +7,15 @@ import httpx2
 import pytest
 from google.oauth2 import service_account
 
-from relay.fcm import FCM_SCOPE, FcmResult, FcmSender, FcmUnreachable, ServiceAccountTokens
+from relay.fcm import (
+    FCM_SCOPE,
+    FcmResult,
+    FcmUnreachable,
+    ServiceAccountRefused,
+    ServiceAccountTokens,
+)
 from tests.conftest import FCM_ACCESS_TOKEN, FCM_PROJECT_ID, fcm_sender
-from tests.fakes import FakeFcmEndpoint, FakeTokenEndpoint, service_account_info
+from tests.fakes import FakeFcmEndpoint, FakeTokenEndpoint, FakeTokens, service_account_info
 
 DATA = {"v": "1", "id": "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60", "payload": "{}"}
 
@@ -100,20 +106,33 @@ async def test_rejection_reports_the_fcm_error_code(
     assert not result.ok
 
 
-class RefusedTokens:
-    """An access token source whose service account Google no longer accepts."""
-
-    async def get(self) -> str:
-        raise google.auth.exceptions.RefreshError("invalid_grant")
-
-
-async def test_no_access_token_means_fcm_cannot_be_reached() -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        google.auth.exceptions.TransportError("Connection refused"),
+        google.auth.exceptions.RefreshError("server_error", retryable=True),
+    ],
+    ids=["token endpoint unreachable", "token endpoint failing"],
+)
+async def test_no_access_token_for_now_means_fcm_cannot_be_reached(
+    error: google.auth.exceptions.GoogleAuthError,
+) -> None:
     fcm = FakeFcmEndpoint()
-    http = httpx2.AsyncClient(transport=httpx2.MockTransport(fcm))
-    sender = FcmSender(http, RefusedTokens(), FCM_PROJECT_ID)
+    refusing = FakeTokens(FCM_ACCESS_TOKEN)
+    refusing.error = error
 
     with pytest.raises(FcmUnreachable):
-        await sender.send("fcm-registration-token", DATA)
+        await fcm_sender(fcm, refusing).send("fcm-registration-token", DATA)
+    assert fcm.requests == []
+
+
+async def test_a_refused_service_account_is_not_worth_another_try() -> None:
+    fcm = FakeFcmEndpoint()
+    refusing = FakeTokens(FCM_ACCESS_TOKEN)
+    refusing.error = google.auth.exceptions.RefreshError("invalid_grant: Invalid JWT Signature.")
+
+    with pytest.raises(ServiceAccountRefused):
+        await fcm_sender(fcm, refusing).send("fcm-registration-token", DATA)
     assert fcm.requests == []
 
 

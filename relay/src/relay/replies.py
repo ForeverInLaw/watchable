@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from relay.clock import Clock
 from relay.devices import DeviceRegistry
-from relay.fcm import MAX_DATA_BYTES, FcmSender, FcmUnreachable, envelope, fits_fcm
+from relay.fcm import (
+    MAX_DATA_BYTES,
+    FcmSender,
+    FcmUnreachable,
+    ServiceAccountRefused,
+    envelope,
+    fits_fcm,
+)
 from relay.protocol import rfc3339
 from relay.store import EventStore, StoredEvent
 from relay.tables import notification_events, replies
@@ -232,6 +239,10 @@ class ReplyDispatch:
             result = await self._fcm.send(companion.fcm_token, message)
         except FcmUnreachable:
             await self._fail(reply_id, ReplyError.FCM_UNAVAILABLE, "FCM unreachable")
+        except ServiceAccountRefused:
+            await self._fail(
+                reply_id, ReplyError.FCM_REJECTED, "Google refused the service account"
+            )
         if result.ok:
             log.info("reply %s to event %s: handed to FCM", reply_id, event_id)
             return
