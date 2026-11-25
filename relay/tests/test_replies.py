@@ -441,6 +441,20 @@ def test_companion_reports_a_failed_reply(
     assert outcome_of(settings) == ("failed", "notification_gone", "2026-11-25T12:00:00Z")
 
 
+def test_result_counts_for_a_reply_whose_fcm_answer_was_lost(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    # FCM took the message, but its answer never came back.
+    fcm.error = httpx2.ReadTimeout("FCM did not answer")
+    post_reply(client, paired.watch_token)
+
+    response = post_result(client, paired.android_token, RESULT_SENT)
+
+    assert response.status_code == 204
+    assert outcome_of(settings) == ("sent", None, "2026-11-25T12:00:00Z")
+
+
 def test_a_second_result_is_a_duplicate_and_changes_nothing(
     client: TestClient, settings: RelaySettings, replied: Pair
 ) -> None:

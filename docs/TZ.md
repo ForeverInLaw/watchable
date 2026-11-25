@@ -597,8 +597,8 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 
 - `error` — `notification_gone` или `remote_input_unsupported` (§7.4), только при `failed`.
 - Принимается только с токеном Companion, чьё событие ответ получил. Чужой или неизвестный `reply_id` — `404 not_found`, тоже одинаково.
-- Relay переводит reply из `queued` в `sent` или `failed`, ставит `error` и `completed_at`, отвечает `204` и пишет запись в лог без текста ответа.
-- Результат для reply, который уже не в `queued`, — `409 duplicate`; запись не меняется.
+- Relay переводит reply из `queued` в `sent` или `failed`, ставит `error` и `completed_at`, отвечает `204` и пишет запись в лог без текста ответа. Reply, упавший с `fcm_unavailable`, тоже принимает результат: FCM мог взять сообщение, а ответ FCM потеряться, например по таймауту чтения.
+- Результат для reply, у которого результат уже есть или который FCM отклонил, — `409 duplicate`; запись не меняется.
 
 ### 5.7 Health
 

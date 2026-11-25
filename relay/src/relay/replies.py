@@ -99,6 +99,13 @@ class Undelivered(Exception):
         return self.reason is ReplyError.FCM_UNAVAILABLE
 
 
+# A reply FCM was unavailable for: the watch may send it again, and FCM may have taken it
+# anyway with its answer lost, so the Companion's result for it still counts.
+FCM_WAS_UNAVAILABLE = (replies.c.status == ReplyStatus.FAILED) & (
+    replies.c.error == ReplyError.FCM_UNAVAILABLE
+)
+
+
 class ReplyStore:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
@@ -127,9 +134,7 @@ class ReplyStore:
                 "error": None,
                 "completed_at": None,
             },
-            where=(replies.c.event_id == event_id)
-            & (replies.c.status == ReplyStatus.FAILED)
-            & (replies.c.error == ReplyError.FCM_UNAVAILABLE),
+            where=(replies.c.event_id == event_id) & FCM_WAS_UNAVAILABLE,
         )
         async with self._engine.begin() as connection:
             result = await connection.execute(statement)
@@ -138,10 +143,11 @@ class ReplyStore:
     async def complete(
         self, reply_id: str, android_device_id: str, result: ReplyResult, now: datetime
     ) -> None:
-        """Records the Companion's result of a queued reply to one of its events.
+        """Records the Companion's result of a reply to one of its events that is queued or
+        that FCM was unavailable for.
 
         Raises UnknownReply alike for an unknown reply and one to another device's event,
-        DuplicateReply when the reply is no longer queued.
+        DuplicateReply when the reply already has its result or FCM refused it.
         """
         own_events = select(notification_events.c.id).where(
             notification_events.c.android_device_id == android_device_id
@@ -149,7 +155,7 @@ class ReplyStore:
         owned = (replies.c.id == reply_id) & replies.c.event_id.in_(own_events)
         statement = (
             update(replies)
-            .where(owned, replies.c.status == ReplyStatus.QUEUED)
+            .where(owned, (replies.c.status == ReplyStatus.QUEUED) | FCM_WAS_UNAVAILABLE)
             .values(
                 status=ReplyStatus(result["status"]),
                 error=result.get("error"),
