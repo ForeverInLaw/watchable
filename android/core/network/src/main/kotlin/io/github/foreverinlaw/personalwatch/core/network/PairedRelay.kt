@@ -11,6 +11,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -19,6 +21,8 @@ import kotlinx.coroutines.withContext
  * so the Companion shows itself unpaired until the user enters a new code.
  */
 class PairedRelay(private val client: RelayClient, private val store: DataStore<Preferences>) {
+    private val pairing = Mutex()
+
     /** The credentials from the last pairing, or null while unpaired. */
     val credentials: Flow<PairCompleteResponse?> = store.data.map { preferences ->
         PairCompleteResponse(
@@ -32,8 +36,13 @@ class PairedRelay(private val client: RelayClient, private val store: DataStore<
      * Enters the [code] the watch shows; on success the new credentials replace the old ones.
      * Not cancellable: once the relay takes the code it revokes the old devices, so the answer
      * must be saved even if the caller, such as a screen the user left, stops waiting.
+     * One pairing at a time, so a slow earlier answer cannot overwrite a later pairing.
      */
-    suspend fun pair(code: String, name: String?): RelayOutcome<PairCompleteResponse> = withContext(NonCancellable) {
+    suspend fun pair(code: String, name: String?): RelayOutcome<PairCompleteResponse> = pairing.withLock {
+        withContext(NonCancellable) { completeAndSave(code, name) }
+    }
+
+    private suspend fun completeAndSave(code: String, name: String?): RelayOutcome<PairCompleteResponse> {
         val outcome = client.completePairing(PairCompleteRequest(pairingCode = code, name = name))
         if (outcome is RelayOutcome.Accepted) {
             store.edit {
@@ -42,7 +51,7 @@ class PairedRelay(private val client: RelayClient, private val store: DataStore<
                 it[WATCH_DEVICE_ID] = outcome.body.watchDeviceId
             }
         }
-        outcome
+        return outcome
     }
 
     /** Sends [event] with the stored token; unpaired, it is refused as the relay would refuse it. */

@@ -5,6 +5,7 @@ import io.github.foreverinlaw.personalwatch.core.protocol.NotificationEvent
 import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -65,10 +66,10 @@ class PairedRelayTest {
 
     private fun respond(code: Int, body: String) = server.enqueue(MockResponse.Builder().code(code).body(body).build())
 
-    private fun pairedBody() =
-        """{"android_device_id":"${credentials.androidDeviceId}",""" +
-            """"android_device_token":"${credentials.androidDeviceToken}",""" +
-            """"watch_device_id":"${credentials.watchDeviceId}"}"""
+    private fun pairedBody(paired: PairCompleteResponse = credentials) =
+        """{"android_device_id":"${paired.androidDeviceId}",""" +
+            """"android_device_token":"${paired.androidDeviceToken}",""" +
+            """"watch_device_id":"${paired.watchDeviceId}"}"""
 
     private fun respondPaired() = respond(201, pairedBody())
 
@@ -95,6 +96,24 @@ class PairedRelayTest {
         pairing.cancelAndJoin()
 
         assertEquals(credentials, relay.credentials.first())
+    }
+
+    @Test
+    fun `a later pairing wins even when the earlier answer arrives last`() = runTest(timeout = 20.seconds) {
+        val relay = relay()
+        val newer = credentials.copy(androidDeviceToken = "N".repeat(43))
+        server.enqueue(
+            MockResponse.Builder().code(201).body(pairedBody()).headersDelay(500, TimeUnit.MILLISECONDS).build(),
+        )
+        respond(201, pairedBody(newer))
+
+        val earlier = launch { relay.pair(code = "11111111", name = null) }
+        runCurrent()
+        assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        val later = launch { relay.pair(code = "22222222", name = null) }
+        joinAll(earlier, later)
+
+        assertEquals(newer, relay.credentials.first())
     }
 
     @Test

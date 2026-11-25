@@ -60,7 +60,7 @@ fun PairingScreen(relay: PairedRelay, onDone: () -> Unit) {
         Text(stringResource(R.string.pairing), style = MaterialTheme.typography.headlineMedium)
         OutlinedTextField(
             value = code,
-            onValueChange = { input -> code = input.filter(Char::isDigit).take(CODE_LENGTH) },
+            onValueChange = { input -> code = input.filter { it in '0'..'9' }.take(CODE_LENGTH) },
             label = { Text(stringResource(R.string.pairing_code)) },
             singleLine = true,
             isError = failure != null,

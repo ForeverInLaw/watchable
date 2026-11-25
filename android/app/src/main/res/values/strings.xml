@@ -17,7 +17,7 @@
     <string name="pairing_submit">Спарить</string>
     <string name="pairing_back">Назад</string>
     <string name="pairing_invalid_code">Код не подошёл. Введите код, который сейчас на экране часов.</string>
-    <string name="pairing_unreachable">Relay недоступен. Проверьте интернет и повторите.</string>
+    <string name="pairing_unreachable">Не удалось связаться с relay. Повторите позже.</string>
     <string name="pairing_rejected">Relay отклонил запрос. Повторите позже.</string>
     <string name="last_event">Последнее уведомление</string>
     <string name="last_event_none">Ещё не отправлялось</string>
