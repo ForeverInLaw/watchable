@@ -10,22 +10,44 @@ import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.time.Instant
 
-/** Holds the app-wide objects the listener service and the screens share. */
+/** Holds the app-wide objects the services and the screens share. */
 class CompanionApp : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val relayStatus = RelayStatus()
+
+    /** Null when the build carries no Firebase options; set once in [onCreate]. */
+    var fcm: Fcm? = null
+        private set
+
+    val activeNotifications = ActiveNotifications()
+
+    val replies by lazy { ReplyCommandHandler(this, activeNotifications::find) }
+
+    override fun onCreate() {
+        super.onCreate()
+        val fcm = Fcm.start(this) ?: return
+        this.fcm = fcm
+        // The token may have changed while the app was not running (TZ §7.5).
+        scope.launch { fcm.token()?.let(::updateFcmToken) }
+    }
+
+    /** Sends the relay a new FCM token; unpaired, pairing sends it instead. */
+    fun updateFcmToken(token: String) {
+        val relay = relay ?: return
+        scope.launch { Log.i(TAG, "FCM token update: ${relay.updatePushToken(token)}") }
+    }
 
     /** Null when the build carries no usable relay URL. */
     val relay: PairedRelay? by lazy {
         val url = BuildConfig.RELAY_URL.toHttpUrlOrNull() ?: return@lazy null
         // Under files/, which data_extraction_rules.xml keeps out of backup and device transfer.
         val store = PreferenceDataStoreFactory.create(scope = scope) { filesDir.resolve("datastore/pairing.preferences_pb") }
-        // Firebase arrives with the reply path; until then pairing sends no FCM token.
-        PairedRelay(RelayClient(url), store, fcmToken = { null })
+        PairedRelay(RelayClient(url), store, fcmToken = { fcm?.token() })
     }
 
     val uploader: EventUploader? by lazy {
