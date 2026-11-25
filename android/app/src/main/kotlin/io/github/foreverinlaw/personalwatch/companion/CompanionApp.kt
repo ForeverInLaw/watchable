@@ -26,7 +26,11 @@ class CompanionApp : Application() {
 
     val activeNotifications = ActiveNotifications()
 
-    val replies by lazy { ReplyCommandHandler(this, activeNotifications::find) }
+    /** Null when the build carries no usable relay URL, so there is no relay to take a result. */
+    val replies: ReplyCommands? by lazy {
+        val relay = relay ?: return@lazy null
+        ReplyCommands(ReplyCommandHandler(this, activeNotifications::find)::execute, relay::postReplyResult)
+    }
 
     override fun onCreate() {
         super.onCreate()
