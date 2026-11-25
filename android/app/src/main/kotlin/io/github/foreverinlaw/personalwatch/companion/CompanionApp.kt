@@ -34,16 +34,15 @@ class CompanionApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val fcm = Fcm.start(this) ?: return
-        this.fcm = fcm
+        fcm = Fcm.start(this) ?: return
         // The token may have changed while the app was not running (TZ §7.5).
-        scope.launch { fcm.token()?.let(::updateFcmToken) }
+        syncFcmToken()
     }
 
-    /** Sends the relay a new FCM token; unpaired, pairing sends it instead. */
-    fun updateFcmToken(token: String) {
+    /** Sends the relay the current FCM token if it changed; unpaired, pairing sends it instead. */
+    fun syncFcmToken() {
         val relay = relay ?: return
-        scope.launch { Log.i(TAG, "FCM token update: ${relay.updatePushToken(token)}") }
+        scope.launch { Log.i(TAG, "FCM token update: ${relay.syncPushToken()}") }
     }
 
     /** Null when the build carries no usable relay URL. */

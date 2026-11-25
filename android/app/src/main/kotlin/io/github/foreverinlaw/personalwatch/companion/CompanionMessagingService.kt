@@ -8,8 +8,9 @@ import kotlinx.coroutines.runBlocking
 
 /** Receives the relay's FCM messages and FCM token changes; runs only when Firebase is configured (TZ §7.5). */
 class CompanionMessagingService : FirebaseMessagingService() {
+    // The token is read again under PairedRelay's lock, so an older update still running cannot overwrite it.
     override fun onNewToken(token: String) {
-        (application as CompanionApp).updateFcmToken(token)
+        (application as CompanionApp).syncFcmToken()
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

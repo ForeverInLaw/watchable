@@ -64,12 +64,15 @@ class PairedRelay(
     }
 
     /**
-     * Sends the relay the Companion's new FCM [token] unless the relay already has it. The token
-     * counts as sent only once the relay took it, so a failed update is sent again next time.
-     * Unpaired, it is refused without a request: pairing sends the token then.
+     * Sends the relay the Companion's current FCM token unless the relay already has it. The token
+     * is read from [fcmToken] under the lock, so when a refresh overlaps an update the last one to
+     * run sends the newest token. It counts as sent only once the relay took it, so a failed update
+     * is sent again next time. Unpaired, it is refused without a request: pairing sends the token
+     * then. Without a token from Firebase there is nothing to send, and the caller tries again later.
      */
-    suspend fun updatePushToken(token: String): RelayOutcome<Unit> = pairing.withLock {
+    suspend fun syncPushToken(): RelayOutcome<Unit> = pairing.withLock {
         authorized { paired ->
+            val token = fcmToken() ?: return@authorized RelayOutcome.Retry(after = null)
             if (store.data.first()[FCM_TOKEN] == token) return@authorized RelayOutcome.Accepted(Unit)
             val deviceToken = paired.androidDeviceToken
             client.updatePushToken(deviceToken, paired.androidDeviceId, PushTokenRequest(token)).also { outcome ->
