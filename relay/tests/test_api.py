@@ -8,12 +8,10 @@ from aioapns.exceptions import MaxAttemptsExceeded
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
-from relay.protocol import load_json, schema_validator
+from relay.protocol import schema_validator
 from relay.settings import SOURCE_PROTOCOL_DIR
-from tests.conftest import TOKEN, WATCH_PUSH_TOKEN
+from tests.conftest import EVENT, TOKEN, WATCH_PUSH_TOKEN
 from tests.fakes import FakeApnsClient
-
-EVENT: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json")
 
 
 def test_healthz_reports_ok(client: TestClient) -> None:
@@ -98,8 +96,11 @@ def test_unreachable_apns_is_retryable(client: TestClient, apns: FakeApnsClient)
     response = post_event(client, EVENT)
 
     assert response.status_code == 503
-    assert error_of(response)["code"] == "apns_unavailable"
-    assert error_of(response)["retryable"] is True
+    assert error_of(response) == {
+        "code": "apns_unavailable",
+        "message": "APNs unreachable",
+        "retryable": True,
+    }
 
 
 @pytest.mark.parametrize(
@@ -145,10 +146,11 @@ def test_error_names_the_rule_not_the_value(client: TestClient) -> None:
     assert error_of(response)["message"] == "$.event_id fails format"
 
 
-def test_body_that_is_not_json_is_refused(client: TestClient) -> None:
+@pytest.mark.parametrize("content", [b"{not json", b'{"title": "\xff"}'], ids=["json", "utf-8"])
+def test_body_that_is_not_json_is_refused(client: TestClient, content: bytes) -> None:
     response = client.post(
         "/v1/events/notification",
-        content=b"{not json",
+        content=content,
         headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
     )
 

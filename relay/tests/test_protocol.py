@@ -10,16 +10,11 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from relay.protocol import load_json as load
-from relay.protocol import schema_validator
-from relay.settings import SOURCE_PROTOCOL_DIR as PROTOCOL
+from relay.protocol import load_json, schema_validator
+from relay.settings import SOURCE_PROTOCOL_DIR
 
-SCHEMAS = sorted((PROTOCOL / "schema").glob("*.schema.json"))
-EXAMPLES = sorted((PROTOCOL / "examples").glob("*.json"))
-
-
-def validator(schema_file: str) -> Draft202012Validator:
-    return schema_validator(PROTOCOL, schema_file)
+SCHEMAS = sorted((SOURCE_PROTOCOL_DIR / "schema").glob("*.schema.json"))
+EXAMPLES = sorted((SOURCE_PROTOCOL_DIR / "examples").glob("*.json"))
 
 
 def schema_file_of(example: Path) -> str:
@@ -35,19 +30,21 @@ def test_every_schema_has_an_example() -> None:
 
 @pytest.mark.parametrize("schema", SCHEMAS, ids=lambda path: path.name)
 def test_schema_is_valid_json_schema(schema: Path) -> None:
-    Draft202012Validator.check_schema(load(schema))
+    Draft202012Validator.check_schema(load_json(schema))
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.name)
 def test_example_passes_its_schema(example: Path) -> None:
-    validator(schema_file_of(example)).validate(load(example))
+    schema_validator(SOURCE_PROTOCOL_DIR, schema_file_of(example)).validate(load_json(example))
 
 
 COMPANION_SCHEMA = "notification-event.schema.json"
 WATCH_SCHEMA = "notification-event-watch.schema.json"
-COMPANION_EVENT: dict[str, Any] = load(PROTOCOL / "examples" / "notification-event.json")
-WATCH_EVENT: dict[str, Any] = load(
-    PROTOCOL / "examples" / "notification-event-watch.truncated.json"
+COMPANION_EVENT: dict[str, Any] = load_json(
+    SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json"
+)
+WATCH_EVENT: dict[str, Any] = load_json(
+    SOURCE_PROTOCOL_DIR / "examples" / "notification-event-watch.truncated.json"
 )
 
 
@@ -81,14 +78,18 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
     ],
 )
 def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:
-    errors = validator(schema_file).iter_errors(event)
+    errors = schema_validator(SOURCE_PROTOCOL_DIR, schema_file).iter_errors(event)
 
     assert keyword in {error.validator for error in errors}
 
 
 def test_companion_event_carries_the_full_body() -> None:
-    validator(COMPANION_SCHEMA).validate(COMPANION_EVENT | {"body": "a" * 3001})
+    schema_validator(SOURCE_PROTOCOL_DIR, COMPANION_SCHEMA).validate(
+        COMPANION_EVENT | {"body": "a" * 3001}
+    )
 
 
 def test_watch_event_with_short_body_is_not_truncated() -> None:
-    validator(WATCH_SCHEMA).validate(WATCH_EVENT | {"body": "Привет", "body_truncated": False})
+    schema_validator(SOURCE_PROTOCOL_DIR, WATCH_SCHEMA).validate(
+        WATCH_EVENT | {"body": "Привет", "body_truncated": False}
+    )

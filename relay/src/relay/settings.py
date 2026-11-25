@@ -5,6 +5,8 @@ from pathlib import Path
 from pydantic import DirectoryPath, PositiveInt, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
+from relay.apns import join_token_groups
+
 # The repo-root protocol/ directory, next to relay/ in a source checkout.
 SOURCE_PROTOCOL_DIR = Path(__file__).resolve().parents[3] / "protocol"
 
@@ -21,8 +23,5 @@ class RelaySettings(BaseSettings):
     # JSON schemas the relay validates request bodies against.
     protocol_dir: DirectoryPath = SOURCE_PROTOCOL_DIR
 
-    @field_validator("watch_push_token")
-    @classmethod
-    def join_token_groups(cls, token: str) -> str:
-        """The watch app shows the token in groups; they may be pasted with the spaces."""
-        return "".join(token.split())
+    # The watch app shows the token in groups; they may be pasted with the spaces.
+    _join_groups = field_validator("watch_push_token")(join_token_groups)

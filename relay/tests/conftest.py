@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from aioapns.common import NotificationResult
@@ -7,11 +8,14 @@ from fastapi.testclient import TestClient
 
 from relay.apns import ApnsSender
 from relay.app import create_app
-from relay.settings import RelaySettings
+from relay.protocol import load_json
+from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
 from tests.fakes import FakeApnsClient
 
 TOKEN = "companion-secret"
 WATCH_PUSH_TOKEN = "a1b2c3d4"
+# A valid Notification event: the protocol example.
+EVENT: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json")
 
 
 @pytest.fixture

@@ -13,10 +13,17 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from aioapns.exceptions import MaxAttemptsExceeded
 from pydantic import ValidationError
 
-from relay.apns import DEFAULT_TTL_SECONDS, AlertPush, ApnsSender, ApnsSettings, PushResult
+from relay.apns import (
+    DEFAULT_TTL_SECONDS,
+    AlertPush,
+    ApnsSender,
+    ApnsSettings,
+    ApnsUnreachable,
+    PushResult,
+    join_token_groups,
+)
 
 type Connect = Callable[[ApnsSettings], ApnsSender]
 
@@ -86,11 +93,11 @@ def main(argv: Sequence[str] | None = None, connect: Connect = ApnsSender.connec
         replyable=args.replyable,
     )
 
-    # The groups may arrive as separate arguments or quoted as one; drop every space.
-    device_token = "".join(" ".join(args.device_token).split())
+    # The groups may arrive as separate arguments or quoted as one.
+    device_token = join_token_groups(" ".join(args.device_token))
     try:
         result = asyncio.run(send(connect, settings, device_token, push, args.ttl))
-    except MaxAttemptsExceeded:
+    except ApnsUnreachable:
         parser.exit(1, f"{parser.prog}: APNs unreachable, see the aioapns log above\n")
 
     print(f"apns-id: {result.apns_id}")

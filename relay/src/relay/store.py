@@ -3,6 +3,7 @@
 import json
 import uuid
 from datetime import datetime, timedelta
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
@@ -24,6 +25,14 @@ from relay.events import NotificationEvent
 from relay.protocol import rfc3339
 
 metadata = MetaData()
+
+
+class DeliveryStatus(StrEnum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    DISPLAYED = "displayed"
+
 
 notification_events = Table(
     "notification_events",
@@ -53,7 +62,7 @@ deliveries = Table(
     Column("id", Text, primary_key=True),
     Column("event_id", Text, ForeignKey("notification_events.id"), nullable=False),
     Column("watch_device_id", Text, nullable=False),
-    # pending | sent | failed | displayed
+    # A DeliveryStatus value.
     Column("status", Text, nullable=False),
     Column("apns_id", Text),
     Column("attempts", Integer, nullable=False, server_default="0"),
@@ -105,7 +114,7 @@ class EventStore:
         query = select(deliveries.c.id).where(
             deliveries.c.event_id == event_id,
             deliveries.c.watch_device_id == watch_device_id,
-            deliveries.c.status == "sent",
+            deliveries.c.status == DeliveryStatus.SENT,
         )
         async with self._engine.connect() as connection:
             return (await connection.execute(query)).first() is not None
@@ -115,7 +124,7 @@ class EventStore:
     ) -> None:
         """Records one push attempt and what APNs answered."""
         outcome = {
-            "status": "sent" if result.ok else "failed",
+            "status": DeliveryStatus.SENT if result.ok else DeliveryStatus.FAILED,
             "apns_id": result.apns_id,
             "last_error": result.reason,
             "updated_at": rfc3339(now),

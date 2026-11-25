@@ -8,18 +8,16 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from json import JSONDecodeError
 from typing import Annotated
 
-from aioapns.exceptions import MaxAttemptsExceeded
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from relay.apns import ApnsSender, ApnsSettings
+from relay.apns import ApnsSender, ApnsSettings, ApnsUnreachable
 from relay.database import connect_database, migrate
-from relay.events import EventParser, InvalidEvent
+from relay.events import EventParser
 from relay.intake import NotificationIntake
 from relay.settings import RelaySettings
 from relay.store import EventStore
@@ -93,14 +91,15 @@ async def receive_notification(request: Request, relay: CurrentRelay) -> Respons
     """Stores the event and pushes it to the watch; 202 once APNs accepts the push."""
     try:
         event = relay.parser.parse(await request.json())
-    except (JSONDecodeError, InvalidEvent) as error:
+    # Covers malformed JSON, a body that is not UTF-8 and a schema breach.
+    except ValueError as error:
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "invalid_request", str(error), retryable=False
         ) from error
 
     try:
         result = await relay.intake.receive(event)
-    except MaxAttemptsExceeded as error:
+    except ApnsUnreachable as error:
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "apns_unavailable",
@@ -113,15 +112,13 @@ async def receive_notification(request: Request, relay: CurrentRelay) -> Respons
             status.HTTP_409_CONFLICT, "duplicate", "Event already delivered", retryable=False
         )
     if not result.ok:
-        # Throttling and APNs outages pass; a rejected token or payload does not.
-        retryable = result.status == status.HTTP_429_TOO_MANY_REQUESTS or result.status >= 500
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE
-            if retryable
+            if result.retryable
             else status.HTTP_500_INTERNAL_SERVER_ERROR,
             "apns_rejected",
             f"APNs rejected the push: {result.reason or result.status}",
-            retryable=retryable,
+            retryable=result.retryable,
         )
     return Response(status_code=status.HTTP_202_ACCEPTED)
 

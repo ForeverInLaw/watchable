@@ -7,6 +7,7 @@ from typing import Any, Protocol, Self
 
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
+from aioapns.exceptions import MaxAttemptsExceeded
 from pydantic import FilePath, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -110,6 +111,20 @@ class PushResult:
     def ok(self) -> bool:
         return self.status == 200
 
+    @property
+    def retryable(self) -> bool:
+        """Throttling and APNs outages pass; a rejected token or payload does not."""
+        return self.status == 429 or self.status >= 500
+
+
+class ApnsUnreachable(Exception):
+    """aioapns ran out of connection attempts; the push was not delivered."""
+
+
+def join_token_groups(token: str) -> str:
+    """The device token without the spaces the watch app shows between its groups."""
+    return "".join(token.split())
+
 
 class ApnsClient(Protocol):
     async def send_notification(self, request: NotificationRequest) -> NotificationResult: ...
@@ -142,7 +157,10 @@ class ApnsSender:
             priority=ALERT_PRIORITY,
             push_type=PushType.ALERT,
         )
-        result = await self._client.send_notification(request)
+        try:
+            result = await self._client.send_notification(request)
+        except MaxAttemptsExceeded as error:
+            raise ApnsUnreachable from error
         return PushResult(
             apns_id=result.notification_id,
             status=int(result.status),
