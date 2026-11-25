@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Error",
+  "description": "Body of every HTTP error response (docs/TZ.md §5.1); codes and retry rules in §5.10.",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": {
+          "description": "Stable machine-readable reason, such as invalid_request or duplicate.",
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "description": "For people and logs; never echoes request content.",
+          "type": "string"
+        },
+        "retryable": {
+          "description": "Whether resending the same request can succeed.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
