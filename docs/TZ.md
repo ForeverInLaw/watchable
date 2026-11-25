@@ -458,6 +458,8 @@ Envelope оборачивает сообщения в транспортах, г
 
 ### 5.4 Notification event
 
+Companion отправляет событие телом `POST /v1/events/notification`. Relay отдаёт часам в `GET /v1/events` тот же объект с полем `body_truncated`.
+
 ```json
 {
   "event_id": "018f...",
@@ -481,10 +483,13 @@ Envelope оборачивает сообщения в транспортах, г
 ```
 
 Правила:
-- `body` максимум 3000 символов; больше — обрезать и сохранить полный текст на relay.
+- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля — `400 invalid_request`.
+- Companion присылает `body` целиком, его ограничивает только размер тела (§5.1). Relay хранит полный текст в `body_full` (§6.1). Если он длиннее 3000 символов (Unicode code points), relay отдаёт часам первые 3000 и `body_truncated: true`, а полный текст — через `GET /v1/events/{id}`.
+- `posted_at` — RFC3339 UTC с суффиксом `Z`.
 - `notification_key` обязателен для reply.
 - `source_app` — человекочитаемое имя.
-- `actions` — только действия, которые можно выполнить; MVP — reply.
+- `actions` — только действия, которые можно выполнить, может быть пустым; MVP — reply (`type: text`).
+- Схемы: `protocol/schema/notification-event.schema.json` (Companion → relay) и `notification-event-watch.schema.json` (relay → Watch app).
 
 ### 5.5 APNs payload
 
@@ -1201,7 +1206,7 @@ watch.example.com {
 
 - GitHub Actions:
   - Linux: Android `assembleDebug`, `test`.
-  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/` или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
+  - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/`, `protocol/` (тесты relay проверяют примеры по схемам) или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/`, сам workflow или его action `.github/actions/xcodegen`. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
   - Номер сборки (`CURRENT_PROJECT_VERSION`) — `github.run_number` workflow `watch`; он растёт и на PR-запусках, поэтому в TestFlight номера идут с пропусками. Перезапуск уже выгруженного run App Store Connect отклонит как дубликат — нужен новый запуск. Переименование `watch.yml` обнулит счётчик — тогда к номеру нужно прибавить смещение. Выгрузки идут по одной (общая concurrency-группа job), чтобы меньший номер не пришёл после большего.

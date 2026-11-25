@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Notification event",
+  "description": "Body of POST /v1/events/notification: an Android notification as the Companion normalized it (docs/TZ.md §5.4). Not wrapped in the envelope (§5.3).",
+  "$ref": "#/$defs/fields",
+  "unevaluatedProperties": false,
+  "$defs": {
+    "fields": {
+      "description": "Fields shared with notification-event-watch.schema.json, kept apart from unevaluatedProperties so that schema can add its own.",
+      "type": "object",
+      "required": [
+        "event_id",
+        "source_package",
+        "source_app",
+        "notification_key",
+        "group_key",
+        "posted_at",
+        "title",
+        "body",
+        "subtext",
+        "category",
+        "is_ongoing",
+        "is_clearable",
+        "is_group_summary",
+        "replyable",
+        "actions"
+      ],
+      "properties": {
+        "event_id": { "type": "string", "format": "uuid" },
+        "source_package": { "type": "string", "minLength": 1 },
+        "source_app": {
+          "description": "Human-readable app name.",
+          "type": ["string", "null"]
+        },
+        "notification_key": {
+          "description": "StatusBarNotification key; a reply is routed by it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "group_key": { "type": ["string", "null"] },
+        "posted_at": {
+          "description": "RFC3339 UTC.",
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "title": { "type": ["string", "null"] },
+        "body": {
+          "description": "Full text; only the 32 KB body limit (§5.1) bounds it.",
+          "type": ["string", "null"]
+        },
+        "subtext": { "type": ["string", "null"] },
+        "category": {
+          "description": "Android notification category, such as msg.",
+          "type": ["string", "null"]
+        },
+        "is_ongoing": { "type": "boolean" },
+        "is_clearable": { "type": "boolean" },
+        "is_group_summary": { "type": "boolean" },
+        "replyable": {
+          "description": "The notification has an action with a RemoteInput.",
+          "type": "boolean"
+        },
+        "actions": {
+          "description": "Only actions the watch can perform; may be empty.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/action" }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["id", "title", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "type": {
+          "description": "text: the action takes the reply text (MVP).",
+          "enum": ["text"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

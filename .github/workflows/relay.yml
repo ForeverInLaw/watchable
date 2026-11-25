@@ -1,4 +1,5 @@
-# Lint, typecheck and test the relay on every PR that touches relay/ (TZ §12.3).
+# Lint, typecheck and test the relay on every PR that touches relay/ or protocol/ (TZ §12.3);
+# the relay tests check protocol/examples against protocol/schema.
 # Runs on push to main too: GitHub only shares caches from the default branch with PRs,
 # so main seeds the uv cache that every new PR starts from.
 name: relay
@@ -7,11 +8,13 @@ on:
   pull_request:
     paths:
       - relay/**
+      - protocol/**
       - .github/workflows/relay.yml
   push:
     branches: [main]
     paths:
       - relay/**
+      - protocol/**
       - .github/workflows/relay.yml
   workflow_dispatch:
 

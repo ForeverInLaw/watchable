@@ -1,0 +1,19 @@
+{
+  "event_id": "018f3a5e-7c2b-7d4e-9a1b-3c5d7e9f1a2b",
+  "source_package": "com.whatsapp",
+  "source_app": "WhatsApp",
+  "notification_key": "0|com.whatsapp|1234|null|10001",
+  "group_key": "0|com.whatsapp|1234",
+  "posted_at": "2026-11-24T12:00:00Z",
+  "title": "Alice",
+  "body": "Привет",
+  "subtext": null,
+  "category": "msg",
+  "is_ongoing": false,
+  "is_clearable": true,
+  "is_group_summary": false,
+  "replyable": true,
+  "actions": [
+    { "id": "reply", "title": "Reply", "type": "text" }
+  ]
+}
