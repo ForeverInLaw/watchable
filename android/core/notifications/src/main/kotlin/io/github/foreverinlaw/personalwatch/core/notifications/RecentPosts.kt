@@ -1,5 +1,6 @@
 package io.github.foreverinlaw.personalwatch.core.notifications
 
+import kotlin.math.abs
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -17,7 +18,9 @@ internal class RecentPosts<C>(private val window: Duration) {
      * it showed the same content less than the window before.
      */
     fun recordAndCheckRepeat(key: String, content: C, postTime: Long): Boolean {
-        lastSeen.values.removeIf { (postTime - it.postTime).milliseconds >= window }
+        // Absolute distance: a post time earlier than the last one (clock change, late callback)
+        // must not keep a stale entry alive.
+        lastSeen.values.removeIf { abs(postTime - it.postTime).milliseconds >= window }
         val previous = lastSeen.put(key, Seen(content, postTime))
         return previous?.content == content
     }

@@ -118,6 +118,13 @@ class NotificationPipelineTest {
         assertEquals(true, process(mail.copy(postTime = mail.postTime + 5_000)) is PipelineResult.Forward)
     }
 
+    @Test
+    fun `the same text posted long before the last post is not a duplicate`() {
+        process(mail)
+
+        assertEquals(true, process(mail.copy(postTime = mail.postTime - 60_000)) is PipelineResult.Forward)
+    }
+
     private fun forwarded(posted: PostedNotification) = (process(posted) as PipelineResult.Forward).event
 
     @Test
