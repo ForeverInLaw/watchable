@@ -34,7 +34,11 @@ class ReplyStatus(StrEnum):
 
 
 class UnknownEvent(Exception):
-    """The relay has no event with this id."""
+    """The paired Companion has sent no event with this id, or it has expired."""
+
+
+class NotReplyable(Exception):
+    """The event's notification has no action that takes a reply."""
 
 
 class NoCompanion(Exception):
@@ -100,17 +104,20 @@ class ReplyDispatch:
     async def send(self, reply: ReplyRequest, event_id: str, watch_device_id: str) -> FcmResult:
         """Stores `reply` as queued and hands reply.execute to FCM; FcmResult is FCM's answer.
 
-        Raises UnknownEvent, NoCompanion or NoFcmToken before anything is stored.
+        Raises NoCompanion, UnknownEvent, NotReplyable or NoFcmToken before anything is stored.
         """
-        event = await self._events.find(event_id)
-        if event is None:
-            raise UnknownEvent
         companion = await self._devices.paired_companion(watch_device_id)
         if companion is None:
             raise NoCompanion
+        now = self._clock()
+        # Scoped to the Companion, so the answer does not tell which other event ids exist.
+        event = await self._events.find(event_id, companion.device_id, now)
+        if event is None:
+            raise UnknownEvent
+        if not event.replyable:
+            raise NotReplyable
         if companion.fcm_token is None:
             raise NoFcmToken
-        now = self._clock()
         await self._store.add(reply, event_id, watch_device_id, now)
         message = reply_execute(reply, event, watch_device_id, now)
         return await self._fcm.send(companion.fcm_token, message)

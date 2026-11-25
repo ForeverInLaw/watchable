@@ -15,9 +15,10 @@ from tests.conftest import (
     Pair,
     bearer,
     error_of,
+    pair,
     post_event,
 )
-from tests.fakes import FakeFcmEndpoint
+from tests.fakes import FakeClock, FakeFcmEndpoint
 
 REPLY: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-request.json")
 
@@ -113,6 +114,48 @@ def test_reply_without_text_is_refused(
 def test_reply_to_an_unknown_event_is_not_found(
     client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
 ) -> None:
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 404
+    assert error_of(response)["code"] == "not_found"
+    assert fcm.requests == []
+
+
+def test_reply_to_an_event_of_another_companion_looks_like_an_unknown_event(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    unknown = post_reply(
+        client, paired.watch_token, event_id="7d1e0c4b-3f5a-4b6c-8d7e-9f0a1b2c3d4e"
+    )
+    # A new pairing: the event stays with the Companion it came from.
+    repaired = pair(client)
+
+    response = post_reply(client, repaired.watch_token)
+
+    assert response.status_code == 404
+    assert response.json() == unknown.json()
+    assert fcm.requests == []
+
+
+def test_reply_to_an_event_that_is_not_replyable_is_refused(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token, EVENT | {"replyable": False})
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 400
+    assert error_of(response)["code"] == "invalid_request"
+    assert fcm.requests == []
+
+
+def test_reply_to_an_expired_event_is_not_found(
+    client: TestClient, fcm: FakeFcmEndpoint, clock: FakeClock, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    clock.advance(7 * 24 * 3600)
+
     response = post_reply(client, paired.watch_token)
 
     assert response.status_code == 404

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request, Response, status
 
 from relay.api import ApiError, CurrentRelay, CurrentWatch, invalid_token, parse_body
-from relay.replies import NoCompanion, UnknownEvent
+from relay.replies import NoCompanion, NotReplyable, UnknownEvent
 
 router = APIRouter()
 
@@ -20,6 +20,13 @@ async def reply(
     except UnknownEvent as error:
         raise ApiError(
             status.HTTP_404_NOT_FOUND, "not_found", "No such event", retryable=False
+        ) from error
+    except NotReplyable as error:
+        raise ApiError(
+            status.HTTP_400_BAD_REQUEST,
+            "invalid_request",
+            "The event takes no reply",
+            retryable=False,
         ) from error
     except NoCompanion as error:
         raise invalid_token() from error
