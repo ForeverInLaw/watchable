@@ -69,6 +69,11 @@ def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def post_event(client: TestClient, token: str, event: object = EVENT) -> Response:
+    """Posts a Notification event with `token`, as the Companion does."""
+    return client.post("/v1/events/notification", json=event, headers=bearer(token))
+
+
 @dataclass(frozen=True, slots=True)
 class Pair:
     """Ids and tokens of a watch and a Companion paired through the API."""

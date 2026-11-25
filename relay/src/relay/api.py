@@ -138,10 +138,18 @@ async def parse_body[T](request: Request, parser: BodyParser[T]) -> T:
         ) from error
 
 
-async def authenticate(relay: CurrentRelay, authorization: Annotated[str, Header()] = "") -> Device:
+def bearer_token(authorization: Annotated[str, Header()] = "") -> str | None:
+    """The credential of an `Authorization: Bearer <credential>` header, if one came."""
+    scheme, _, credential = authorization.partition(" ")
+    return credential if scheme.lower() == "bearer" else None
+
+
+BearerToken = Annotated[str | None, Depends(bearer_token)]
+
+
+async def authenticate(relay: CurrentRelay, token: BearerToken) -> Device:
     """The device whose Bearer token came with the request."""
-    scheme, _, token = authorization.partition(" ")
-    device = await relay.devices.authenticate(token) if scheme.lower() == "bearer" else None
+    device = None if token is None else await relay.devices.authenticate(token)
     if device is None:
         raise invalid_token()
     return device
@@ -160,15 +168,10 @@ def require_android(device: CurrentDevice) -> Device:
 CurrentAndroid = Annotated[Device, Depends(require_android)]
 
 
-def require_pairing_secret(
-    relay: CurrentRelay, authorization: Annotated[str, Header()] = ""
-) -> None:
+def require_pairing_secret(relay: CurrentRelay, secret: BearerToken) -> None:
     """Admits pair/start only with the PAIRING_SECRET the watch build carries."""
-    scheme, _, secret = authorization.partition(" ")
     # Bytes, because compare_digest refuses str with non-ASCII characters.
-    if scheme.lower() != "bearer" or not secrets.compare_digest(
-        secret.encode(), relay.pairing_secret
-    ):
+    if secret is None or not secrets.compare_digest(secret.encode(), relay.pairing_secret):
         raise ApiError(
             status.HTTP_401_UNAUTHORIZED,
             "invalid_pairing_secret",

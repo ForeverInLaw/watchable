@@ -6,7 +6,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import (
-    EVENT,
     PAIR_START,
     PAIRING_SECRET,
     Pair,
@@ -15,6 +14,7 @@ from tests.conftest import (
     complete_pairing,
     error_of,
     pair,
+    post_event,
     start_pairing,
 )
 from tests.fakes import FakeApnsClient, FakeClock
@@ -140,16 +140,10 @@ def test_new_start_replaces_the_open_session(client: TestClient) -> None:
     assert complete_pairing(client, second["pairing_code"]).status_code == 201
 
 
-def post_event(client: TestClient, token: str, event_id: str) -> Any:
-    return client.post(
-        "/v1/events/notification", json=EVENT | {"event_id": event_id}, headers=bearer(token)
-    )
-
-
 def test_start_leaves_the_current_pair_working(client: TestClient, paired: Pair) -> None:
     start_pairing(client, apns_token="ffff")
 
-    response = post_event(client, paired.android_token, "11111111-1111-4111-8111-111111111111")
+    response = post_event(client, paired.android_token)
 
     assert response.status_code == 202
 
@@ -159,9 +153,9 @@ def test_repair_revokes_the_old_devices(
 ) -> None:
     repaired = pair(client, apns_token="ffff")
 
-    old_android = post_event(client, paired.android_token, "11111111-1111-4111-8111-111111111111")
+    old_android = post_event(client, paired.android_token)
     old_watch = pair_status(client, paired.pairing_id, paired.watch_token)
-    new_android = post_event(client, repaired.android_token, "22222222-2222-4222-8222-222222222222")
+    new_android = post_event(client, repaired.android_token)
 
     assert error_of(old_android)["code"] == "invalid_token"
     assert error_of(old_watch)["code"] == "invalid_token"
@@ -177,7 +171,7 @@ def test_watch_pushes_go_to_its_new_apns_token(
         json={"push_token": "abcdef"},
         headers=bearer(paired.watch_token),
     )
-    post_event(client, paired.android_token, "11111111-1111-4111-8111-111111111111")
+    post_event(client, paired.android_token)
 
     assert updated.status_code == 204
     assert [request.device_token for request in apns.requests] == ["abcdef"]
