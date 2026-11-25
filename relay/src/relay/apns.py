@@ -1,5 +1,6 @@
 """APNs delivery of watch alerts: payload and headers per docs/TZ.md §5.5."""
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, Self
@@ -13,6 +14,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPLY_CATEGORY = "MESSAGE_REPLY"
 # apns-priority for immediate delivery (aioapns.PRIORITY_HIGH is a str, the field an int).
 ALERT_PRIORITY = 10
+# Seconds APNs keeps a push while the watch is offline (TZ §5.5).
+DEFAULT_TTL_SECONDS = 3600
+# APNs refuses a larger alert payload with PayloadTooLarge.
+MAX_PAYLOAD_BYTES = 4096
+# Ends an alert body cut to fit; the full text stays on the relay.
+ELLIPSIS = "…"
 
 
 class ApnsSettings(BaseSettings):
@@ -42,15 +49,36 @@ class AlertPush:
     """A user-visible notification mirrored to the watch."""
 
     title: str
-    body: str
+    body: str | None
     source_package: str
     event_id: str
     replyable: bool
 
     def to_payload(self) -> dict[str, Any]:
-        """APNs JSON body. Alerts from one app share a thread on the watch."""
+        """APNs JSON body, its alert body cut to fit MAX_PAYLOAD_BYTES (TZ §5.5).
+
+        Alerts from one app share a thread on the watch.
+        """
+        payload = self._payload(self.body)
+        if self.body is None or payload_size(payload) <= MAX_PAYLOAD_BYTES:
+            return payload
+        # The longest prefix of the body that fits with the ellipsis, in code points.
+        # JSON escapes make the size uneven per character, so search rather than compute.
+        low, high = 0, len(self.body)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if payload_size(self._payload(self.body[:middle] + ELLIPSIS)) <= MAX_PAYLOAD_BYTES:
+                low = middle
+            else:
+                high = middle - 1
+        return self._payload(self.body[:low] + ELLIPSIS)
+
+    def _payload(self, body: str | None) -> dict[str, Any]:
+        alert = {"title": self.title}
+        if body is not None:
+            alert["body"] = body
         aps: dict[str, Any] = {
-            "alert": {"title": self.title, "body": self.body},
+            "alert": alert,
             "sound": "default",
             "thread-id": self.source_package,
             "interruption-level": "active",
@@ -63,6 +91,11 @@ class AlertPush:
             "replyable": self.replyable,
             "source_package": self.source_package,
         }
+
+
+def payload_size(payload: dict[str, Any]) -> int:
+    """Bytes APNs counts: aioapns sends json.dumps(payload, ensure_ascii=False) as UTF-8."""
+    return len(json.dumps(payload, ensure_ascii=False).encode())
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aioapns>=4.0",
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.1",
+    "fastapi>=0.165.0",
+    "jsonschema>=4.26.0",
     "pydantic-settings>=2.16.3",
+    # jsonschema checks the date-time format only when this is installed.
+    "referencing>=0.37.0",
+    "rfc3339-validator>=0.1.4",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -18,12 +27,10 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "jsonschema>=4.26.0",
+    "httpx2>=2.16.2",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
-    # jsonschema checks the date-time format only when this is installed.
-    "rfc3339-validator>=0.1.4",
     "ruff>=0.17.6",
     "types-jsonschema>=4.26.0.20261006",
 ]

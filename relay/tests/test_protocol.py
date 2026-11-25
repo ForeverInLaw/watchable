@@ -4,35 +4,22 @@ An example is named `<schema>[.<variant>].json` and checked against
 `protocol/schema/<schema>.schema.json`. Schemas reference each other by file name.
 """
 
-import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
-PROTOCOL = Path(__file__).resolve().parents[2] / "protocol"
+from relay.protocol import load_json as load
+from relay.protocol import schema_validator
+from relay.settings import SOURCE_PROTOCOL_DIR as PROTOCOL
+
 SCHEMAS = sorted((PROTOCOL / "schema").glob("*.schema.json"))
 EXAMPLES = sorted((PROTOCOL / "examples").glob("*.json"))
 
 
-def load(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-REGISTRY: Registry[Any] = Registry().with_resources(
-    (path.name, Resource.from_contents(load(path))) for path in SCHEMAS
-)
-
-
 def validator(schema_file: str) -> Draft202012Validator:
-    """Validator for a schema in protocol/schema, with format checks on."""
-    return Draft202012Validator(
-        {"$ref": schema_file},
-        registry=REGISTRY,
-        format_checker=Draft202012Validator.FORMAT_CHECKER,
-    )
+    return schema_validator(PROTOCOL, schema_file)
 
 
 def schema_file_of(example: Path) -> str:

@@ -16,7 +16,7 @@ from pathlib import Path
 from aioapns.exceptions import MaxAttemptsExceeded
 from pydantic import ValidationError
 
-from relay.apns import AlertPush, ApnsSender, ApnsSettings, PushResult
+from relay.apns import DEFAULT_TTL_SECONDS, AlertPush, ApnsSender, ApnsSettings, PushResult
 
 type Connect = Callable[[ApnsSettings], ApnsSender]
 
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument(
         "--ttl",
         type=non_negative_int,
-        default=3600,
+        default=DEFAULT_TTL_SECONDS,
         help="seconds APNs keeps the push while the watch is offline; 0 tries once",
     )
     return parser
