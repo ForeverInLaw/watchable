@@ -1,5 +1,7 @@
 # Generates watch/PersonalWatch.xcodeproj from watch/project.yml with a pinned XcodeGen.
 # Pinned because the project is regenerated on every run, so a new XcodeGen could change it.
+# The checksum matters too: the TestFlight job runs this binary before it loads the signing
+# secrets, so a swapped release asset must not run there.
 name: Generate watch Xcode project
 description: Install a pinned XcodeGen and generate the watch Xcode project.
 
@@ -10,7 +12,9 @@ runs:
       working-directory: watch
       env:
         XCODEGEN_VERSION: 2.48.0
+        XCODEGEN_SHA256: 620c9f0dc10849f94728ab5df52d225ebab8187439dd6fee1925e59e80dff892
       run: |
         curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o "$RUNNER_TEMP/xcodegen.zip"
+        echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
         unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
         "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
