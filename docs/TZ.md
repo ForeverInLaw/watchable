@@ -1225,7 +1225,7 @@ watch.example.com {
 ### 12.3 CI
 
 - GitHub Actions:
-  - Linux: Android `assembleDebug`, `test`.
+  - Linux: Android `assembleDebug`, `test` — на PR, который меняет `android/`, `protocol/` (тесты `core/protocol` проверяют событие по схеме) или сам workflow, и на push в `main`. Кэшируются Gradle (зависимости и build cache), платформа SDK и runtime Robolectric.
   - Linux: relay `ruff`, `mypy --strict`, `pytest` — на PR, который меняет `relay/`, `protocol/` (тесты relay проверяют примеры по схемам) или сам workflow, и на push в `main`, чтобы PR начинали с тёплого кэша uv.
   - macOS: `xcodegen generate` + `xcodebuild` для watch app без подписи — на каждом PR, который меняет `watch/`, сам workflow или его action `.github/actions/xcodegen`. `.xcodeproj` генерируется из `watch/project.yml` и не коммитится.
   - macOS: подписанный archive и загрузка в TestFlight — только на push в `main`, который меняет `watch/` или workflow, на теги `vX.Y.Z` и на ручной `workflow_dispatch` (с любой ветки — проверить сборку на часах до merge или продлить 90-дневную сборку) (ADR 0004).
