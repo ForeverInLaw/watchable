@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx2
 import pytest
 from aioapns.common import NotificationResult
 from fastapi.testclient import TestClient
@@ -11,18 +12,22 @@ from httpx2 import Response
 
 from relay.apns import ApnsSender
 from relay.app import create_app
+from relay.fcm import FcmSender
 from relay.protocol import load_json, schema_validator
 from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
-from tests.fakes import FakeApnsClient, FakeClock
+from tests.fakes import FakeApnsClient, FakeClock, FakeFcmEndpoint, FakeTokens
 
 # A valid Notification event: the protocol example.
 EVENT: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json")
 PAIR_START: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "pair-start-request.json")
+# The Companion of M3 pairs with its FCM token.
 PAIR_COMPLETE: dict[str, Any] = load_json(
-    SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.json"
+    SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.fcm.json"
 )
 # The relay's PAIRING_SECRET; the watch build carries the same value.
 PAIRING_SECRET = "pairing-secret-of-at-least-32-chars"
+FCM_PROJECT_ID = "watch-app"
+FCM_ACCESS_TOKEN = "ya29.relay-token"
 # Where the fake clock starts.
 START = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
 
@@ -38,6 +43,17 @@ def apns() -> FakeApnsClient:
 
 
 @pytest.fixture
+def fcm() -> FakeFcmEndpoint:
+    return FakeFcmEndpoint()
+
+
+def fcm_sender(fcm: FakeFcmEndpoint) -> FcmSender:
+    """A real FcmSender whose HTTP requests reach `fcm` instead of Google."""
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(fcm))
+    return FcmSender(http, FakeTokens(FCM_ACCESS_TOKEN), FCM_PROJECT_ID)
+
+
+@pytest.fixture
 def settings(tmp_path: Path) -> RelaySettings:
     return RelaySettings(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'relay.db'}",
@@ -46,8 +62,15 @@ def settings(tmp_path: Path) -> RelaySettings:
 
 
 @pytest.fixture
-def client(settings: RelaySettings, apns: FakeApnsClient, clock: FakeClock) -> Iterator[TestClient]:
-    app = create_app(settings, connect_apns=lambda: ApnsSender(apns), clock=clock)
+def client(
+    settings: RelaySettings, apns: FakeApnsClient, fcm: FakeFcmEndpoint, clock: FakeClock
+) -> Iterator[TestClient]:
+    app = create_app(
+        settings,
+        connect_apns=lambda: ApnsSender(apns),
+        connect_fcm=lambda: fcm_sender(fcm),
+        clock=clock,
+    )
     with TestClient(app) as test_client:
         yield test_client
 

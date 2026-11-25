@@ -19,6 +19,7 @@ from relay.intake import NotificationIntake
 from relay.pairing import PairCompleteRequest, Pairing, PairStartRequest
 from relay.protocol import BodyParser
 from relay.ratelimit import RateLimit
+from relay.replies import ReplyDispatch, ReplyRequest
 
 
 class ApiError(Exception):
@@ -95,11 +96,13 @@ class Relay:
     pairing: Pairing
     pair_start_limit: RateLimit
     intake: NotificationIntake
+    replies: ReplyDispatch
     event_parser: BodyParser[NotificationEvent]
     pair_start_parser: BodyParser[PairStartRequest]
     pair_complete_parser: BodyParser[PairCompleteRequest]
     push_token_parser: BodyParser[PushTokenRequest]
     watch_push_token_parser: BodyParser[PushTokenRequest]
+    reply_parser: BodyParser[ReplyRequest]
 
 
 def current_relay(request: Request) -> Relay:
@@ -168,6 +171,16 @@ def require_android(device: CurrentDevice) -> Device:
 
 
 CurrentAndroid = Annotated[Device, Depends(require_android)]
+
+
+def require_watch(device: CurrentDevice) -> Device:
+    """Only the watch sends what the user does on the watch; any other token is refused."""
+    if device.role is not DeviceRole.WATCH:
+        raise invalid_token()
+    return device
+
+
+CurrentWatch = Annotated[Device, Depends(require_watch)]
 
 
 def require_pairing_secret(relay: CurrentRelay, secret: BearerToken) -> None:

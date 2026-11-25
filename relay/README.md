@@ -4,16 +4,21 @@ Self-hosted relay between the Android companion and the watch app (`../docs/TZ.m
 The watch and the Companion pair through it with a one-time code (TZ F1); each then
 holds its own device token. The relay accepts Notification events from the paired
 Companion at `POST /v1/events/notification`, keeps them in SQLite and pushes each one
-to the paired watch through APNs. FCM, the outbox worker, retention and Docker Compose
-follow §9.
+to the paired watch through APNs. A reply the user enters on the watch comes in at
+`POST /v1/events/{event_id}/reply`; the relay keeps it in `replies` and sends it to the
+Companion as an FCM `reply.execute` message (TZ F3, §9.4). The outbox worker, retention
+and Docker Compose follow §9.
 
 ## Running through a named tunnel
 
 The relay reads its settings from the repo-root `.env` (template: `.env.example`):
-the `APNS_*` credentials, `PAIRING_SECRET` (at least 32 characters, the same value the
-watch build carries; `openssl rand -base64 32` makes one), `DATABASE_URL` and
-`PAIRING_TTL_SECONDS`. On startup it
-creates the database and applies the migrations. From the repo root:
+the `APNS_*` credentials, `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_PATH`, `PAIRING_SECRET`
+(at least 32 characters, the same value the watch build carries; `openssl rand -base64 32`
+makes one), `DATABASE_URL` and `PAIRING_TTL_SECONDS`. `FCM_PROJECT_ID` is the Firebase
+project id, and `FCM_SERVICE_ACCOUNT_PATH` points at the JSON key of a service account of
+that project (Firebase console → Project settings → Service accounts → Generate new private
+key); the relay trades it for OAuth2 access tokens and does not start without it. On startup
+it creates the database and applies the migrations. From the repo root:
 
 ```bash
 uv run --project relay --env-file .env uvicorn --factory relay.app:app_from_env --port 8000
@@ -62,7 +67,17 @@ curl -i localhost:8000/v1/events/notification \
 
 The first post answers `202` and the paired watch gets the alert; the same `event_id`
 again answers `409 duplicate` without a second push. The status codes are listed in
-TZ §5.4. Pairing again revokes both earlier devices. Events stored before M2 carry
+TZ §5.4. A reply goes out with the watch's token, as `watch_device_token` from `pair/start`:
+
+```bash
+curl -i localhost:8000/v1/events/<event_id>/reply \
+  -H "Authorization: Bearer <watch_device_token>" -H "Content-Type: application/json" \
+  --data @protocol/examples/reply-request.json
+```
+
+It answers `202` once FCM took the message for the Companion's FCM token, which the
+Companion sends in `pair/complete` or later through `push-token`. Pairing again revokes
+both earlier devices. Events stored before M2 carry
 placeholder device ids and are not migrated; delete `data/relay.db` once to start clean.
 
 ## Test push

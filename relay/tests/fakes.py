@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import google.auth.transport
+import httpx2
 from aioapns import NotificationRequest
 from aioapns.common import NotificationResult
 from cryptography.hazmat.primitives import serialization
@@ -88,6 +89,25 @@ class FakeTokens:
 
     async def get(self) -> str:
         return self.token
+
+
+class FakeFcmEndpoint:
+    """Stands in for the FCM HTTP v1 API behind httpx2.MockTransport: records each request
+    and answers with `status` and `body`, by default as FCM accepts a message."""
+
+    def __init__(self) -> None:
+        self.status = 200
+        self.body: dict[str, Any] = {"name": "projects/watch-app/messages/1"}
+        self.requests: list[httpx2.Request] = []
+
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        self.requests.append(request)
+        return httpx2.Response(self.status, json=self.body)
+
+    @property
+    def messages(self) -> list[dict[str, Any]]:
+        """The `message` of every request so far."""
+        return [json.loads(request.content)["message"] for request in self.requests]
 
 
 class FakeClock:

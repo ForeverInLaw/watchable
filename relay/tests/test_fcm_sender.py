@@ -1,13 +1,13 @@
 """The FCM HTTP v1 client: OAuth2 tokens from the service account and the message it posts."""
 
-import json
+from typing import Any
 
-import httpx2
 import pytest
 from google.oauth2 import service_account
 
-from relay.fcm import FCM_SCOPE, FcmResult, FcmSender, ServiceAccountTokens
-from tests.fakes import FakeTokenEndpoint, FakeTokens, service_account_info
+from relay.fcm import FCM_SCOPE, FcmResult, ServiceAccountTokens
+from tests.conftest import FCM_ACCESS_TOKEN, FCM_PROJECT_ID, fcm_sender
+from tests.fakes import FakeFcmEndpoint, FakeTokenEndpoint, service_account_info
 
 DATA = {"v": "1", "id": "4c9e2f1a-8b3d-4e6f-a5c7-2d1b9e8f7a60", "payload": "{}"}
 
@@ -42,31 +42,25 @@ async def test_expired_access_token_is_fetched_again() -> None:
     assert endpoint.requests == 2
 
 
-def sender(handler: httpx2.MockTransport) -> FcmSender:
-    return FcmSender(httpx2.AsyncClient(transport=handler), FakeTokens("ya29.token"), "watch-app")
-
-
 async def test_message_goes_to_the_project_with_the_access_token() -> None:
-    requests: list[httpx2.Request] = []
+    fcm = FakeFcmEndpoint()
 
-    def answer(request: httpx2.Request) -> httpx2.Response:
-        requests.append(request)
-        return httpx2.Response(200, json={"name": "projects/watch-app/messages/1"})
-
-    result = await sender(httpx2.MockTransport(answer)).send("fcm-registration-token", DATA)
+    result = await fcm_sender(fcm).send("fcm-registration-token", DATA)
 
     assert result == FcmResult(status=200, error=None)
-    [request] = requests
+    [request] = fcm.requests
     assert request.method == "POST"
-    assert str(request.url) == "https://fcm.googleapis.com/v1/projects/watch-app/messages:send"
-    assert request.headers["Authorization"] == "Bearer ya29.token"
-    assert json.loads(request.content) == {
-        "message": {
+    assert str(request.url) == (
+        f"https://fcm.googleapis.com/v1/projects/{FCM_PROJECT_ID}/messages:send"
+    )
+    assert request.headers["Authorization"] == f"Bearer {FCM_ACCESS_TOKEN}"
+    assert fcm.messages == [
+        {
             "token": "fcm-registration-token",
             "data": DATA,
             "android": {"priority": "high", "ttl": "3600s"},
         }
-    }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -92,10 +86,13 @@ async def test_message_goes_to_the_project_with_the_access_token() -> None:
     ],
     ids=["fcm error code", "status only", "no error body"],
 )
-async def test_rejection_reports_the_fcm_error_code(body: object, error: str | None) -> None:
-    transport = httpx2.MockTransport(lambda _request: httpx2.Response(404, json=body))
+async def test_rejection_reports_the_fcm_error_code(
+    body: dict[str, Any], error: str | None
+) -> None:
+    fcm = FakeFcmEndpoint()
+    fcm.status, fcm.body = 404, body
 
-    result = await sender(transport).send("fcm-registration-token", DATA)
+    result = await fcm_sender(fcm).send("fcm-registration-token", DATA)
 
     assert result == FcmResult(status=404, error=error)
     assert not result.ok

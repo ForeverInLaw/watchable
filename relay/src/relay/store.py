@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -25,6 +26,15 @@ class DeliveryStatus(StrEnum):
 
 # Characters of body the watch gets; the rest is fetched by id (§5.4).
 WATCH_BODY_LIMIT = 3000
+
+
+@dataclass(frozen=True, slots=True)
+class StoredEvent:
+    """What a reply needs of its event: where the Companion finds the notification."""
+
+    event_id: str
+    notification_key: str
+    source_package: str
 
 
 class EventStore:
@@ -58,6 +68,18 @@ class EventStore:
             await connection.execute(
                 insert(notification_events).values(row).on_conflict_do_nothing()
             )
+
+    async def find(self, event_id: str) -> StoredEvent | None:
+        query = select(
+            notification_events.c.id,
+            notification_events.c.notification_key,
+            notification_events.c.source_package,
+        ).where(notification_events.c.id == event_id)
+        async with self._engine.connect() as connection:
+            row = (await connection.execute(query)).first()
+        return (
+            None if row is None else StoredEvent(row.id, row.notification_key, row.source_package)
+        )
 
     async def was_pushed(self, event_id: str, watch_device_id: str) -> bool:
         """Whether APNs has already accepted this event's push to the watch."""

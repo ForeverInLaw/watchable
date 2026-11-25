@@ -41,6 +41,14 @@ class PushTarget:
     push_token: str
 
 
+@dataclass(frozen=True, slots=True)
+class Companion:
+    """A paired Companion and its FCM token; None until the Companion has sent one."""
+
+    device_id: str
+    fcm_token: str | None
+
+
 class PushTokenRequest(TypedDict):
     """Body of POST /v1/devices/{id}/push-token, shaped by protocol/schema/push-token-request."""
 
@@ -118,3 +126,17 @@ class DeviceRegistry:
         async with self._engine.connect() as connection:
             row = (await connection.execute(query)).first()
         return None if row is None else PushTarget(row.id, row.push_token)
+
+    async def paired_companion(self, watch_device_id: str) -> Companion | None:
+        """The Companion that entered the watch's code, unless it is revoked."""
+        query = (
+            select(devices.c.id, devices.c.push_token)
+            .join(pairing_sessions, pairing_sessions.c.android_device_id == devices.c.id)
+            .where(
+                pairing_sessions.c.watch_device_id == watch_device_id,
+                devices.c.revoked_at.is_(None),
+            )
+        )
+        async with self._engine.connect() as connection:
+            row = (await connection.execute(query)).first()
+        return None if row is None else Companion(row.id, row.push_token)
