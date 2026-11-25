@@ -3,7 +3,8 @@
 The Companion: Kotlin + Jetpack Compose (`../docs/TZ.md` §7). It listens for notifications,
 filters and normalizes them into Notification events (§4 F2) and posts them to the relay once
 paired with the watch (§4 F1). Replies from the watch arrive over FCM as `reply.execute`, and
-the Companion sends each one through the reply action of the notification it answers (§4 F3,
+the Companion sends each one through the reply action of the notification it answers and reports
+the result to the relay; a message FCM delivers again is dropped by its envelope id (§4 F3,
 §7.4). The foreground service comes in a later stage.
 
 ## Modules

@@ -6,7 +6,9 @@ holds its own device token. The relay accepts Notification events from the paire
 Companion at `POST /v1/events/notification`, keeps them in SQLite and pushes each one
 to the paired watch through APNs. A reply the user enters on the watch comes in at
 `POST /v1/events/{event_id}/reply`; the relay keeps it in `replies` and sends it to the
-Companion as an FCM `reply.execute` message (TZ F3, §9.4). The outbox worker, retention
+Companion as an FCM `reply.execute` message (TZ F3, §9.4). The Companion reports at
+`POST /v1/replies/{reply_id}/result` whether it sent the reply, and the relay keeps that in
+`replies` and logs it. The outbox worker, retention
 and Docker Compose follow §9.
 
 ## Running through a named tunnel
@@ -76,7 +78,19 @@ curl -i localhost:8000/v1/events/<event_id>/reply \
 ```
 
 It answers `202` once FCM took the message for the Companion's FCM token, which the
-Companion sends in `pair/complete` or later through `push-token`. Pairing again revokes
+Companion sends in `pair/complete` or later through `push-token`. When FCM does not take
+it, the relay answers `503` and keeps the reply as `failed` (TZ §5.10). The Companion then
+reports the result with its own token:
+
+```bash
+curl -i localhost:8000/v1/replies/<reply_id>/result \
+  -H "Authorization: Bearer <android_device_token>" -H "Content-Type: application/json" \
+  --data @protocol/examples/reply-result.json
+```
+
+Each reply's fate shows up in the log as a `relay.replies` line, without the reply text;
+`sqlite3 data/relay.db "SELECT id, status, error, completed_at FROM replies"` shows the
+same from the database. Pairing again revokes
 both earlier devices. Events stored before M2 carry
 placeholder device ids and are not migrated; delete `data/relay.db` once to start clean.
 
