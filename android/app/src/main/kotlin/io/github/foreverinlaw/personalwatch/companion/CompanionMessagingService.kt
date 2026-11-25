@@ -8,10 +8,8 @@ import kotlinx.coroutines.runBlocking
 
 /** Receives the relay's FCM messages and FCM token changes; runs only when Firebase is configured (TZ §7.5). */
 class CompanionMessagingService : FirebaseMessagingService() {
-    private val app get() = application as CompanionApp
-
     override fun onNewToken(token: String) {
-        app.updateFcmToken(token)
+        (application as CompanionApp).updateFcmToken(token)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -27,7 +25,7 @@ class CompanionMessagingService : FirebaseMessagingService() {
      * background thread, so blocking it holds up nothing else.
      */
     private fun reply(message: FcmMessage.Reply) {
-        val handled = app.replies?.let { replies -> runBlocking { replies.receive(message) } }
+        val handled = (application as CompanionApp).replies?.let { replies -> runBlocking { replies.receive(message) } }
         // Null for a message already run, or a build without a relay. Never log the reply text (TZ §7.8).
         Log.i(TAG, "reply ${message.payload.replyId}: ${handled ?: "dropped"}")
     }
