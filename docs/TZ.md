@@ -458,6 +458,8 @@ Envelope оборачивает сообщения в транспортах, г
 
 ### 5.4 Notification event
 
+Companion отправляет событие телом `POST /v1/events/notification`. Relay отдаёт часам в `GET /v1/events` тот же объект с полем `body_truncated`.
+
 ```json
 {
   "event_id": "018f...",
@@ -481,10 +483,13 @@ Envelope оборачивает сообщения в транспортах, г
 ```
 
 Правила:
-- `body` максимум 3000 символов; больше — обрезать и сохранить полный текст на relay.
+- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля — `400 invalid_request`.
+- Companion присылает `body` целиком, его ограничивает только размер тела (§5.1). Relay хранит полный текст в `body_full` (§6.1). Если он длиннее 3000 символов (Unicode code points), relay отдаёт часам первые 3000 и `body_truncated: true`, а полный текст — через `GET /v1/events/{id}`.
+- `posted_at` — RFC3339 UTC с суффиксом `Z`.
 - `notification_key` обязателен для reply.
 - `source_app` — человекочитаемое имя.
-- `actions` — только действия, которые можно выполнить; MVP — reply.
+- `actions` — только действия, которые можно выполнить, может быть пустым; MVP — reply (`type: text`).
+- Схемы: `protocol/schema/notification-event.schema.json` (Companion → relay) и `notification-event-watch.schema.json` (relay → Watch app).
 
 ### 5.5 APNs payload
 
