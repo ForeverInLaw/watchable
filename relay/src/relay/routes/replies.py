@@ -50,7 +50,7 @@ async def reply(
         ) from error
     except DuplicateReply as error:
         raise ApiError(
-            status.HTTP_409_CONFLICT, "duplicate", "Reply already sent", retryable=False
+            status.HTTP_409_CONFLICT, "duplicate", "Reply already received", retryable=False
         ) from error
     except NoCompanion as error:
         raise invalid_token() from error

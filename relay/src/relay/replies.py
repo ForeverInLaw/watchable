@@ -97,7 +97,7 @@ class NoCompanion(Exception):
 
 
 class DuplicateReply(Exception):
-    """The relay already has this reply: sent to FCM, or with the result reported."""
+    """The relay already has this reply_id, whatever became of it: one FCM message per reply."""
 
 
 class UnknownReply(Exception):
