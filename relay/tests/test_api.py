@@ -213,3 +213,15 @@ def test_resend_racing_the_first_push_is_not_pushed(
 
     assert sorted(response.status_code for response in responses) == [202, 409]
     assert len(apns.requests) == 1
+
+
+def test_body_over_32_kb_is_refused(client: TestClient, apns: FakeApnsClient) -> None:
+    response = post_event(client, EVENT | {"body": "a" * 32 * 1024})
+
+    assert response.status_code == 413
+    assert error_of(response) == {
+        "code": "payload_too_large",
+        "message": "Body over 32768 bytes",
+        "retryable": False,
+    }
+    assert apns.requests == []

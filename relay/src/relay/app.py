@@ -3,6 +3,7 @@
 Run with `uvicorn --factory relay.app:app_from_env`; see the README.
 """
 
+import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -90,6 +91,25 @@ async def answer_error(_request: Request, error: Exception) -> Response:
     return as_api_error(error).response()
 
 
+# Largest request body the relay reads (TZ §5.1).
+MAX_BODY_BYTES = 32 * 1024
+
+
+async def read_body(request: Request) -> bytes:
+    """The request body; reading stops with 413 as soon as it passes MAX_BODY_BYTES."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_BODY_BYTES:
+            raise ApiError(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "payload_too_large",
+                f"Body over {MAX_BODY_BYTES} bytes",
+                retryable=False,
+            )
+    return bytes(body)
+
+
 router = APIRouter()
 
 
@@ -108,7 +128,7 @@ async def healthz(relay: CurrentRelay) -> dict[str, str]:
 async def receive_notification(request: Request, relay: CurrentRelay) -> Response:
     """Stores the event and pushes it to the watch; 202 once APNs accepts the push."""
     try:
-        event = relay.parser.parse(await request.json())
+        event = relay.parser.parse(json.loads(await read_body(request)))
     # Covers malformed JSON, a body that is not UTF-8 and a schema breach.
     except ValueError as error:
         raise ApiError(

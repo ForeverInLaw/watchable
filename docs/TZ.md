@@ -409,7 +409,7 @@ Relay:
   {"error":{"code":"...","message":"...","retryable":true}}
   ```
   Схема: `protocol/schema/error.schema.json`. `message` не повторяет содержимое запроса.
-- HTTP-коды: 200, 201, 202, 204, 400, 401, 403, 404, 409, 429, 500, 503.
+- HTTP-коды: 200, 201, 202, 204, 400, 401, 403, 404, 409, 413, 429, 500, 503.
 - Retry: экспоненциальный backoff с jitter, максимум 5 минут.
 - Rate limit: 120 событий/мин, 30 ответов/мин, 60 команд/мин.
 
@@ -615,6 +615,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `403 forbidden` — не retry.
 - `404 not_found` — не retry.
 - `409 duplicate` — считать успехом.
+- `413 payload_too_large` — тело больше 32 КБ (§5.1), не retry.
 - `429 rate_limited` — retry с `Retry-After`.
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
