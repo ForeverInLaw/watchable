@@ -243,16 +243,24 @@ BLE не используется для основного потока уве�
 - Companion слушает `NotificationListenerService`.
 - Фильтры:
   - пропускать свои уведомления;
-  - пропускать `isOngoing` (кроме `CATEGORY_CALL`? — calls вне scope, пропускать);
-  - пропускать групповые summary, если есть дочерние;
+  - пропускать `isOngoing` и `CATEGORY_CALL` — звонки вне scope, даже если приложение не пометило их ongoing;
+  - пропускать групповой summary, пока активно хотя бы одно дочернее уведомление его группы; summary без активных дочерних (некоторые приложения публикуют только его) отправляется с `is_group_summary: true`;
   - blocklist по package name;
-  - дедуп по `notification_key` + `postTime` в окне 5 секунд.
+  - дедуп: повторная публикация с тем же `notification_key` и тем же текстом (`title`, `body`, `subtext` после нормализации) менее чем через 5 секунд по `postTime` после предыдущей публикации этого ключа пропускается. Новый текст под тем же ключом (второе сообщение в чате через 2 секунды) отправляется всегда.
 - Извлекать:
   - `packageName`, `applicationInfo.loadLabel`;
   - `title`, `text`, `bigText`, `subText`, `conversationTitle`;
   - `category`, `isClearable`, `isOngoing`;
   - `notification_key`, `groupKey`, `postTime`;
-  - `replyable` = есть `Notification.Action` с `RemoteInput`.
+  - `replyable` = есть `Notification.Action` с `RemoteInput`, принимающим свободный текст.
+- Нормализация текста:
+  - MessagingStyle: `title` — `conversationTitle`, иначе отправитель последнего сообщения, иначе `EXTRA_TITLE`; `body` — текст последнего сообщения, в групповом чате с префиксом «Отправитель: »;
+  - остальные: `title` — `EXTRA_TITLE`, `body` — `EXTRA_BIG_TEXT`, иначе `EXTRA_TEXT`;
+  - `subtext` — `EXTRA_SUB_TEXT`; пустые строки — `null`; одиночные суррогаты заменяются на U+FFFD, иначе relay ответит `400` (§5.4);
+  - `group_key` — ключ группы, только если приложение или системная автогруппировка сгруппировали уведомление, иначе `null`;
+  - `actions` — первое действие со свободным текстом как `{"id": "reply", "type": "text"}`.
+- До pairing (M2) URL relay и статический токен берутся при сборке из `android/local.properties` (`relay.url`, `relay.token`); без них приложение собирается и показывает «Relay не настроен».
+- До Room (§6.2) неотправленные события живут только в памяти: до 12 попыток с backoff из §5.1, затем событие отбрасывается.
 - Отправлять `POST /v1/events/notification`.
 - Relay:
   - сохраняет событие;
@@ -778,7 +786,8 @@ Retention:
 
 ### 7.1 Стек
 
-- Kotlin 2.1.
+- Kotlin 2.4, встроенная поддержка Kotlin в AGP 9.5; Gradle 9.9, JDK 21.
+- compileSdk 37.1 (его требуют текущие AndroidX и OkHttp), minSdk 31, targetSdk 35.
 - Jetpack Compose (Material 3).
 - Room.
 - DataStore.
@@ -786,7 +795,6 @@ Retention:
 - OkHttp + Kotlinx Serialization.
 - Hilt.
 - Firebase Messaging.
-- minSdk 31, targetSdk 35.
 
 ### 7.2 Модули
 
