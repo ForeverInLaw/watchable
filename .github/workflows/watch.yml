@@ -1,6 +1,8 @@
-# Unsigned build of the watch app on every PR that touches watch/ (TZ §12.3);
-# other PRs skip it to spare the scarce macOS runners.
-# Signing and TestFlight upload on main belong to a separate job (ADR 0004).
+# Watch app CI (TZ §12.3, ADR 0004).
+# - PRs that touch watch/: unsigned build, no secrets, so PRs from forks are safe.
+# - Push to main that touches watch/, v1.2.3 tags, manual dispatch: signed archive uploaded
+#   to TestFlight. The tag also sets the version (1.2.3); the build number is the run number.
+# Other events skip the workflow to spare the scarce macOS runners.
 name: watch
 
 on:
@@ -8,33 +10,149 @@ on:
     paths:
       - watch/**
       - .github/workflows/watch.yml
+      - .github/actions/xcodegen/**
+  push:
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"] # path filters do not apply to tags
+    paths:
+      - watch/**
+      - .github/workflows/watch.yml
+      - .github/actions/xcodegen/**
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push to a PR supersedes its running check; uploads always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # App Store Connect only accepts builds made with the Xcode 26 SDKs; the runner defaults to 16.
+  # Both jobs use the same Xcode so a green PR means the upload will compile too.
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
 jobs:
   build:
+    if: github.event_name == 'pull_request'
     runs-on: macos-15
-    defaults:
-      run:
-        working-directory: watch
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      # Pinned: the project is generated on every run, so a new XcodeGen could change it.
-      - name: Generate Xcode project
-        env:
-          XCODEGEN_VERSION: 2.48.0
-        run: |
-          curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o "$RUNNER_TEMP/xcodegen.zip"
-          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
-          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+      - uses: ./.github/actions/xcodegen
 
       # Building the iOS wrapper also builds and embeds the watch app.
       - name: Build
+        working-directory: watch
         run: |
           xcodebuild -project PersonalWatch.xcodeproj -scheme PersonalWatch \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  testflight:
+    # Never on pull_request: this job holds the signing secrets (ADR 0004).
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/xcodegen
+
+      # A throwaway keychain, as in GitHub's "Installing an Apple certificate on macOS runners"
+      # guide. Hosted runners are discarded after the job, so it is not cleaned up.
+      - name: Install distribution certificate
+        env:
+          DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -base64 24)"
+          printenv DIST_CERT_P12_BASE64 | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/dist.p12" -P "$DIST_CERT_P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+
+      # The profiles are the source of the bundle ids and profile UUIDs, so nothing about
+      # them is repeated here. Their UUIDs feed PROVISIONING_PROFILE_SPECIFIER (project.yml).
+      - name: Install provisioning profiles
+        env:
+          PROFILE_IOS_BASE64: ${{ secrets.PROFILE_IOS_BASE64 }}
+          PROFILE_WATCH_BASE64: ${{ secrets.PROFILE_WATCH_BASE64 }}
+        run: |
+          profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$profiles"
+          for target in IOS WATCH; do
+            profile="$RUNNER_TEMP/$target.mobileprovision"
+            printenv "PROFILE_${target}_BASE64" | base64 --decode > "$profile"
+            security cms -D -i "$profile" > "$RUNNER_TEMP/$target.plist"
+            uuid="$(plutil -extract UUID raw "$RUNNER_TEMP/$target.plist")"
+            app_id="$(plutil -extract Entitlements.application-identifier raw "$RUNNER_TEMP/$target.plist")"
+            cp "$profile" "$profiles/$uuid.mobileprovision"
+            echo "${target}_PROFILE_UUID=$uuid" >> "$GITHUB_ENV"
+            echo "${target}_BUNDLE_ID=${app_id#*.}" >> "$GITHUB_ENV"
+          done
+
+      - name: Archive
+        working-directory: watch
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          versions=(CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER")
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            versions+=(MARKETING_VERSION="${GITHUB_REF_NAME#v}")
+          fi
+          xcodebuild -project PersonalWatch.xcodeproj -scheme PersonalWatch \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PersonalWatch.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            IOS_PROFILE_UUID="$IOS_PROFILE_UUID" \
+            WATCH_PROFILE_UUID="$WATCH_PROFILE_UUID" \
+            "${versions[@]}" \
+            archive
+
+      - name: Upload to TestFlight
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          printenv ASC_KEY_P8_BASE64 | base64 --decode > "$RUNNER_TEMP/asc_key.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$IOS_BUNDLE_ID</key><string>$IOS_PROFILE_UUID</string>
+              <key>$WATCH_BUNDLE_ID</key><string>$WATCH_PROFILE_UUID</string>
+            </dict>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PersonalWatch.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc_key.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"

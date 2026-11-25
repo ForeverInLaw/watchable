@@ -17,6 +17,14 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     GENERATE_INFOPLIST_FILE: YES
+    # HTTPS only, which is exempt; spares the export compliance question on every TestFlight build.
+    INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+  configs:
+    # Release is only built by the CI TestFlight job (ADR 0004). It passes DEVELOPMENT_TEAM and
+    # the profile UUIDs (IOS_PROFILE_UUID, WATCH_PROFILE_UUID) read from the installed profiles.
+    Release:
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: Apple Distribution
 
 packages:
   QRCodeGenerator:
@@ -36,6 +44,9 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: >-
           UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
           UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: $(IOS_PROFILE_UUID)
     dependencies:
       - target: PersonalWatch Watch App
     scheme: {}
@@ -53,4 +64,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: PersonalWatch Watch App/PersonalWatch.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: PersonalWatch
         INFOPLIST_KEY_WKWatchOnly: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: $(WATCH_PROFILE_UUID)
     scheme: {}

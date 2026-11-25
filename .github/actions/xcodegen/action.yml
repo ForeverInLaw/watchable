@@ -1,0 +1,16 @@
+# Generates watch/PersonalWatch.xcodeproj from watch/project.yml with a pinned XcodeGen.
+# Pinned because the project is regenerated on every run, so a new XcodeGen could change it.
+name: Generate watch Xcode project
+description: Install a pinned XcodeGen and generate the watch Xcode project.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: watch
+      env:
+        XCODEGEN_VERSION: 2.48.0
+      run: |
+        curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o "$RUNNER_TEMP/xcodegen.zip"
+        unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+        "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
