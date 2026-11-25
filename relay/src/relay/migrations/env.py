@@ -13,7 +13,7 @@ from alembic import context
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from relay.store import metadata
+from relay.tables import metadata
 
 
 def run_migrations(connection: Connection) -> None:

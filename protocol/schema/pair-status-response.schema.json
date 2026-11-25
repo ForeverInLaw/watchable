@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pair status response",
+  "description": "200 answer to GET /v1/pair/status?pairing_id=... with the watch token. A session that expired, burned or was replaced answers 404 pairing_expired instead, and the watch starts over (docs/TZ.md F1).",
+  "type": "object",
+  "required": ["paired"],
+  "properties": {
+    "paired": {
+      "description": "The Companion has entered the code.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

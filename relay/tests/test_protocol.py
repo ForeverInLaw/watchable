@@ -10,8 +10,10 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from relay.pairing import PAIR_COMPLETE_SCHEMA, PAIR_START_SCHEMA
 from relay.protocol import load_json, schema_validator
 from relay.settings import SOURCE_PROTOCOL_DIR
+from tests.conftest import PAIR_COMPLETE, PAIR_START
 
 SCHEMAS = sorted((SOURCE_PROTOCOL_DIR / "schema").glob("*.schema.json"))
 EXAMPLES = sorted((SOURCE_PROTOCOL_DIR / "examples").glob("*.json"))
@@ -64,6 +66,12 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         (WATCH_SCHEMA, WATCH_EVENT | {"body": None}, "type"),
         (WATCH_SCHEMA, without(WATCH_EVENT, "body_truncated"), "required"),
         (WATCH_SCHEMA, WATCH_EVENT | {"body_full": "a" * 3001}, "unevaluatedProperties"),
+        (PAIR_START_SCHEMA, PAIR_START | {"public_key": "k"}, "additionalProperties"),
+        (PAIR_START_SCHEMA, without(PAIR_START, "apns_token"), "required"),
+        (PAIR_START_SCHEMA, PAIR_START | {"apns_token": "a1b2 c3d4"}, "pattern"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"public_key": "k"}, "additionalProperties"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"pairing_code": "1234567"}, "pattern"),
+        (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"platform": "watchos"}, "const"),
     ],
     ids=[
         "companion: posted_at not in UTC",
@@ -75,6 +83,12 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         "watch: truncated null body",
         "watch: no body_truncated",
         "watch: unknown field",
+        "pair start: public_key",
+        "pair start: no apns_token",
+        "pair start: apns_token in groups",
+        "pair complete: public_key",
+        "pair complete: 7-digit code",
+        "pair complete: not android",
     ],
 )
 def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:

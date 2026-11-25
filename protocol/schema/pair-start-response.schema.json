@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pair start response",
+  "description": "201 answer to POST /v1/pair/start. The watch keeps the token in the Keychain, shows the code and polls GET /v1/pair/status until it expires (docs/TZ.md F1).",
+  "type": "object",
+  "required": ["pairing_id", "pairing_code", "watch_device_id", "watch_device_token", "expires_at"],
+  "properties": {
+    "pairing_id": { "type": "string", "format": "uuid" },
+    "pairing_code": { "$ref": "#/$defs/pairing_code" },
+    "watch_device_id": {
+      "description": "Path parameter of POST /v1/devices/{id}/push-token.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "watch_device_token": { "$ref": "#/$defs/device_token" },
+    "expires_at": {
+      "description": "When the code stops working, 10 minutes after the start; RFC3339 UTC.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "pairing_code": {
+      "description": "One-time code of 8 digits (docs/TZ.md §5.2).",
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    },
+    "device_token": {
+      "description": "Bearer token of the device: 32 random bytes, base64url without padding.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    }
+  }
+}

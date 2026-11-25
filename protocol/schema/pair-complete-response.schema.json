@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pair complete response",
+  "description": "201 answer to POST /v1/pair/complete. Every device paired before is revoked (docs/TZ.md F1).",
+  "type": "object",
+  "required": ["android_device_id", "android_device_token", "watch_device_id"],
+  "properties": {
+    "android_device_id": { "type": "string", "format": "uuid" },
+    "android_device_token": { "$ref": "pair-start-response.schema.json#/$defs/device_token" },
+    "watch_device_id": { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

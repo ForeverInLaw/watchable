@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta
 
 from aioapns import NotificationRequest
 from aioapns.common import NotificationResult
@@ -20,3 +21,16 @@ class FakeApnsClient:
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class FakeClock:
+    """A clock that stands still until a test moves it."""
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += timedelta(seconds=seconds)

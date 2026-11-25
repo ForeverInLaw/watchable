@@ -3,7 +3,8 @@ import json
 import pytest
 
 from relay.apns import MAX_PAYLOAD_BYTES, AlertPush
-from relay.events import EventParser, alert_push
+from relay.events import EVENT_SCHEMA, NotificationEvent, alert_push
+from relay.protocol import BodyParser
 from relay.settings import SOURCE_PROTOCOL_DIR
 from tests.conftest import EVENT
 
@@ -100,7 +101,7 @@ def test_alert_without_body_has_only_a_title() -> None:
 def test_alert_title_names_app_and_sender(
     source_app: str | None, sender: str | None, title: str
 ) -> None:
-    event = EventParser(SOURCE_PROTOCOL_DIR).parse(
+    event = BodyParser[NotificationEvent](SOURCE_PROTOCOL_DIR, EVENT_SCHEMA).parse(
         EVENT | {"source_app": source_app, "title": sender}
     )
 
