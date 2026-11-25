@@ -30,12 +30,12 @@ class EventUploaderTest {
     )
 
     /** Answers with [outcomes] in turn, repeating the last one, and records when each send happened. */
-    private class FakeRelay(private val scope: TestScope, vararg outcomes: RelayOutcome) {
+    private class FakeRelay(private val scope: TestScope, vararg outcomes: RelayOutcome<Unit>) {
         private val remaining = ArrayDeque(outcomes.toList())
         val sentAt = mutableListOf<Long>()
         val sentIds = mutableListOf<String>()
 
-        suspend fun send(event: NotificationEvent): RelayOutcome {
+        suspend fun send(event: NotificationEvent): RelayOutcome<Unit> {
             sentAt += scope.currentTime
             sentIds += event.eventId
             return if (remaining.size > 1) remaining.removeFirst() else remaining.first()
@@ -43,8 +43,8 @@ class EventUploaderTest {
     }
 
     /** Uploads [events] in order and returns each finished event id with its last outcome. */
-    private fun TestScope.upload(relay: FakeRelay, vararg events: NotificationEvent = arrayOf(event)): List<Pair<String, RelayOutcome>> {
-        val finished = mutableListOf<Pair<String, RelayOutcome>>()
+    private fun TestScope.upload(relay: FakeRelay, vararg events: NotificationEvent = arrayOf(event)): List<Pair<String, RelayOutcome<Unit>>> {
+        val finished = mutableListOf<Pair<String, RelayOutcome<Unit>>>()
         // The upper jitter bound, so the delays are predictable; the uploader's queue outlives the test.
         val uploader = EventUploader(backgroundScope, relay::send, jitter = { it }, onFinished = { e, outcome -> finished += e.eventId to outcome })
         events.forEach(uploader::upload)
@@ -56,7 +56,7 @@ class EventUploaderTest {
     @Test
     fun `a later event waits until the earlier one is finished`() = runTest {
         val later = event.copy(eventId = "later")
-        val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Accepted)
+        val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Accepted(Unit))
 
         val finished = upload(relay, event, later)
 
@@ -66,15 +66,15 @@ class EventUploaderTest {
 
     @Test
     fun `a retryable failure is retried with growing delays until accepted`() = runTest {
-        val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Retry(null), RelayOutcome.Accepted)
+        val relay = FakeRelay(this, RelayOutcome.Retry(null), RelayOutcome.Retry(null), RelayOutcome.Accepted(Unit))
 
-        assertEquals(listOf(RelayOutcome.Accepted), upload(relay).map { it.second })
+        assertEquals(listOf(RelayOutcome.Accepted(Unit)), upload(relay).map { it.second })
         assertEquals(listOf(0L, 1_000L, 3_000L), relay.sentAt)
     }
 
     @Test
     fun `the delay the relay asks for wins over the backoff`() = runTest {
-        val relay = FakeRelay(this, RelayOutcome.Retry(30.seconds), RelayOutcome.Accepted)
+        val relay = FakeRelay(this, RelayOutcome.Retry(30.seconds), RelayOutcome.Accepted(Unit))
 
         upload(relay)
 
@@ -83,7 +83,7 @@ class EventUploaderTest {
 
     @Test
     fun `a longer delay asked by the relay is capped at 5 minutes`() = runTest {
-        val relay = FakeRelay(this, RelayOutcome.Retry(1_000.seconds), RelayOutcome.Accepted)
+        val relay = FakeRelay(this, RelayOutcome.Retry(1_000.seconds), RelayOutcome.Accepted(Unit))
 
         upload(relay)
 
@@ -95,7 +95,7 @@ class EventUploaderTest {
         val rejected = RelayOutcome.Rejected(400, "invalid_request")
         val relay = FakeRelay(this, rejected)
 
-        assertEquals(listOf<RelayOutcome>(rejected), upload(relay).map { it.second })
+        assertEquals(listOf<RelayOutcome<Unit>>(rejected), upload(relay).map { it.second })
         assertEquals(1, relay.sentAt.size)
     }
 
@@ -103,7 +103,7 @@ class EventUploaderTest {
     fun `delays stop growing at 5 minutes and the uploader gives up after 12 attempts`() = runTest {
         val relay = FakeRelay(this, RelayOutcome.Retry(null))
 
-        assertEquals(listOf<RelayOutcome>(RelayOutcome.Retry(null)), upload(relay).map { it.second })
+        assertEquals(listOf<RelayOutcome<Unit>>(RelayOutcome.Retry(null)), upload(relay).map { it.second })
         assertEquals(
             listOf(1L, 2, 4, 8, 16, 32, 64, 128, 256, 300, 300).map { it * 1_000 },
             relay.sentAt.zipWithNext { a, b -> b - a },

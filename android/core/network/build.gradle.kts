@@ -1,4 +1,4 @@
-// Relay HTTP client and the retrying uploader (TZ §5.1, §5.10).
+// Relay HTTP client, the Companion's pairing with it and the retrying uploader (TZ F1, §5.1, §5.10).
 plugins {
     alias(libs.plugins.kotlin.jvm)
 }
@@ -9,6 +9,7 @@ dependencies {
     api(project(":core:protocol"))
     api(libs.kotlinx.coroutines.core)
     api(libs.okhttp)
+    api(libs.datastore.preferences.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

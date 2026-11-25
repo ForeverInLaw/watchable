@@ -8,12 +8,12 @@ import java.time.Instant
 
 /** How the relay took the last event, for the status screen. */
 class RelayStatus {
-    data class Result(val outcome: RelayOutcome, val at: Instant)
+    data class Result(val outcome: RelayOutcome<Unit>, val at: Instant)
 
     private val last = MutableStateFlow<Result?>(null)
     val lastResult: StateFlow<Result?> = last.asStateFlow()
 
-    fun record(outcome: RelayOutcome, at: Instant) {
+    fun record(outcome: RelayOutcome<Unit>, at: Instant) {
         last.value = Result(outcome, at)
     }
 }

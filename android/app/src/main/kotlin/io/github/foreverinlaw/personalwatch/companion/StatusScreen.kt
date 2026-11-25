@@ -24,18 +24,24 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
+import io.github.foreverinlaw.personalwatch.core.protocol.PairCompleteResponse
+import kotlinx.coroutines.flow.StateFlow
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/** Notification access, relay configuration and how the relay took the last event. */
+/**
+ * Notification access, relay configuration, pairing and how the relay took the last event.
+ * [pairing] is null when the relay is not configured; [onPair] opens code entry.
+ */
 @Composable
-fun StatusScreen(isRelayConfigured: Boolean, relayStatus: RelayStatus) {
+fun StatusScreen(pairing: StateFlow<PairCompleteResponse?>?, relayStatus: RelayStatus, onPair: () -> Unit) {
     val context = LocalContext.current
     // Re-read on every lifecycle change, so returning from the system settings shows the new state.
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val hasAccess = remember(lifecycleState) { context.hasNotificationAccess() }
     val lastResult by relayStatus.lastResult.collectAsStateWithLifecycle()
+    val isPaired = pairing?.collectAsStateWithLifecycle()?.value != null
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
@@ -56,9 +62,18 @@ fun StatusScreen(isRelayConfigured: Boolean, relayStatus: RelayStatus) {
         ListItem(
             headlineContent = { Text(stringResource(R.string.relay)) },
             supportingContent = {
-                Text(stringResource(if (isRelayConfigured) R.string.relay_configured else R.string.relay_not_configured))
+                Text(stringResource(if (pairing != null) R.string.relay_configured else R.string.relay_not_configured))
             },
         )
+        if (pairing != null) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.pairing)) },
+                supportingContent = { Text(stringResource(if (isPaired) R.string.pairing_paired else R.string.pairing_unpaired)) },
+            )
+            Button(onClick = onPair) {
+                Text(stringResource(if (isPaired) R.string.repair else R.string.pair))
+            }
+        }
         ListItem(
             headlineContent = { Text(stringResource(R.string.last_event)) },
             supportingContent = { Text(lastResult?.let { resultText(it) } ?: stringResource(R.string.last_event_none)) },
@@ -70,7 +85,7 @@ fun StatusScreen(isRelayConfigured: Boolean, relayStatus: RelayStatus) {
 private fun resultText(result: RelayStatus.Result): String {
     val time = TIME_FORMAT.format(result.at.atZone(ZoneId.systemDefault()))
     return when (result.outcome) {
-        RelayOutcome.Accepted -> stringResource(R.string.last_event_accepted, time)
+        is RelayOutcome.Accepted -> stringResource(R.string.last_event_accepted, time)
         is RelayOutcome.Retry -> stringResource(R.string.last_event_unreachable, time)
         is RelayOutcome.Rejected -> stringResource(R.string.last_event_rejected, time)
     }

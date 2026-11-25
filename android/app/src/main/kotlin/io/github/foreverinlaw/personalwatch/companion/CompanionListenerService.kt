@@ -18,10 +18,13 @@ class CompanionListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val uploader = (application as CompanionApp).uploader ?: return
+        val app = application as CompanionApp
+        val uploader = app.uploader ?: return
         val posted = sbn.toPostedNotification(appLabel = appLabel(sbn.packageName))
         when (val result = pipeline.process(posted) { activeNotifications.orEmpty().map { it.toActiveNotification() } }) {
-            is PipelineResult.Forward -> uploader.upload(result.event)
+            // Unpaired there is no token to send with (TZ F1), but the pipeline still counts the
+            // notification as shown, so pairing later does not bring old chats to the watch.
+            is PipelineResult.Forward -> if (app.pairing?.value != null) uploader.upload(result.event)
             is PipelineResult.Skip -> Log.d(TAG, "skipped ${sbn.key}: ${result.reason}")
         }
     }

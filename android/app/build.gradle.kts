@@ -5,9 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Until pairing (M2) the relay URL and its static bearer token are baked into the build from the
-// gitignored local.properties (relay.url, relay.token). Absent values build an app that reports
-// the relay as not configured.
+// The relay URL is baked into the build from the gitignored local.properties (relay.url); without it
+// the app builds and reports the relay as not configured. The device token comes from pairing (TZ F1).
 val localProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.isFile }?.reader()?.use(::load)
 }
@@ -29,7 +28,6 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "RELAY_URL", buildConfigString(localProperties.getProperty("relay.url", "")))
-        buildConfigField("String", "RELAY_TOKEN", buildConfigString(localProperties.getProperty("relay.token", "")))
     }
 
     buildFeatures {
