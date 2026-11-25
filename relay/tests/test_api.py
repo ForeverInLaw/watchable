@@ -1,15 +1,18 @@
 """The relay HTTP API, driven through FastAPI with APNs faked and a fresh SQLite file."""
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
 from aioapns.common import NotificationResult
 from aioapns.exceptions import MaxAttemptsExceeded
 from fastapi.testclient import TestClient
-from httpx2 import Response
+from httpx2 import Headers, Response
 
+from relay.apns import ApnsSender
+from relay.app import create_app
 from relay.protocol import schema_validator
-from relay.settings import SOURCE_PROTOCOL_DIR
+from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
 from tests.conftest import EVENT, TOKEN, WATCH_PUSH_TOKEN
 from tests.fakes import FakeApnsClient
 
@@ -156,3 +159,57 @@ def test_body_that_is_not_json_is_refused(client: TestClient, content: bytes) ->
 
     assert response.status_code == 400
     assert error_of(response)["code"] == "invalid_request"
+
+
+def test_token_that_is_not_ascii_is_refused(client: TestClient) -> None:
+    response = client.post(
+        "/v1/events/notification", json=EVENT, headers=Headers([(b"Authorization", b"Bearer \xff")])
+    )
+
+    assert response.status_code == 401
+    assert error_of(response)["code"] == "invalid_token"
+
+
+def test_unknown_path_answers_in_the_error_shape(client: TestClient) -> None:
+    response = client.get("/v1/nowhere")
+
+    assert response.status_code == 404
+    assert error_of(response) == {"code": "not_found", "message": "Not Found", "retryable": False}
+
+
+def test_unexpected_failure_is_retryable(settings: RelaySettings, apns: FakeApnsClient) -> None:
+    apns.error = RuntimeError("boom")
+    app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = post_event(client, EVENT)
+
+    assert response.status_code == 500
+    assert error_of(response) == {
+        "code": "internal_error",
+        "message": "Internal Server Error",
+        "retryable": True,
+    }
+
+
+def test_delivered_event_stays_delivered_after_restart(
+    settings: RelaySettings, apns: FakeApnsClient
+) -> None:
+    for expected in (202, 409):
+        app = create_app(settings, connect_apns=lambda: ApnsSender(apns))
+        with TestClient(app) as client:
+            assert post_event(client, EVENT).status_code == expected
+
+    assert len(apns.requests) == 1
+
+
+def test_resend_racing_the_first_push_is_not_pushed(
+    client: TestClient, apns: FakeApnsClient
+) -> None:
+    apns.delay = 0.2
+
+    with ThreadPoolExecutor() as pool:
+        responses = list(pool.map(lambda _: post_event(client, EVENT), range(2)))
+
+    assert sorted(response.status_code for response in responses) == [202, 409]
+    assert len(apns.requests) == 1

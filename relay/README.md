@@ -67,8 +67,10 @@ uv run mypy src tests
 uv run pytest
 ```
 
-Schema changes go into a new Alembic revision in `src/relay/migrations/versions`:
+Schema changes go into a new Alembic revision in `src/relay/migrations/versions`.
+Autogenerate compares the tables in `store.py` with a database at the latest revision,
+such as the one the relay migrates on startup from the repo root:
 
 ```bash
-DATABASE_URL=sqlite+aiosqlite:///data/relay.db uv run alembic revision --autogenerate -m "..."
+DATABASE_URL=sqlite+aiosqlite:///../data/relay.db uv run alembic revision --autogenerate -m "..."
 ```

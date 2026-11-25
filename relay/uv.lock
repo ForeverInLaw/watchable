@@ -1098,6 +1098,7 @@ dependencies = [
     { name = "referencing" },
     { name = "rfc3339-validator" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "starlette" },
     { name = "uvicorn" },
 ]
 
@@ -1122,6 +1123,7 @@ requires-dist = [
     { name = "referencing", specifier = ">=0.37.0" },
     { name = "rfc3339-validator", specifier = ">=0.1.4" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.9" },
+    { name = "starlette", specifier = ">=1.10.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 

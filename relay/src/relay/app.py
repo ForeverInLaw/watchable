@@ -8,12 +8,14 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
+from http import HTTPStatus
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
+from starlette.exceptions import HTTPException
 
 from relay.apns import ApnsSender, ApnsSettings, ApnsUnreachable
 from relay.database import connect_database, migrate
@@ -60,16 +62,32 @@ def authenticate(relay: CurrentRelay, authorization: Annotated[str, Header()] = 
     """Admits the Companion's static bearer token (pairing replaces it in M2)."""
     scheme, _, token = authorization.partition(" ")
     expected = relay.settings.relay_token.get_secret_value()
-    if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
+    # Bytes, because compare_digest refuses str with non-ASCII characters.
+    if scheme.lower() != "bearer" or not secrets.compare_digest(token.encode(), expected.encode()):
         raise ApiError(
             status.HTTP_401_UNAUTHORIZED, "invalid_token", "Bearer token required", retryable=False
         )
 
 
-async def answer_api_error(_request: Request, error: Exception) -> Response:
-    """Registered for ApiError only; Starlette types every handler for Exception."""
-    assert isinstance(error, ApiError)
-    return error.response()
+def as_api_error(error: Exception) -> ApiError:
+    """Any error the app answers, in the §5.1 shape; an unexpected one may be retried."""
+    match error:
+        case ApiError():
+            return error
+        case HTTPException(status_code=status_code, detail=detail):
+            code = HTTPStatus(status_code).phrase.lower().replace(" ", "_")
+            return ApiError(status_code, code, str(detail), retryable=False)
+        case _:
+            return ApiError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Internal Server Error",
+                retryable=True,
+            )
+
+
+async def answer_error(_request: Request, error: Exception) -> Response:
+    return as_api_error(error).response()
 
 
 router = APIRouter()
@@ -141,7 +159,8 @@ def create_app(settings: RelaySettings, connect_apns: Callable[[], ApnsSender]) 
         await engine.dispose()
 
     app = FastAPI(title="Relay", lifespan=lifespan)
-    app.add_exception_handler(ApiError, answer_api_error)
+    for error_type in (ApiError, HTTPException, Exception):
+        app.add_exception_handler(error_type, answer_error)
     app.include_router(router)
     return app
 
