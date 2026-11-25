@@ -1,7 +1,10 @@
 # Watch app CI (TZ §12.3, ADR 0004).
-# - PRs that touch watch/: unsigned build, no secrets, so PRs from forks are safe.
-# - Push to main that touches watch/, v1.2.3 tags, manual dispatch: signed archive uploaded
-#   to TestFlight. The tag also sets the version (1.2.3); the build number is the run number.
+# - PRs that touch watch/, manual dispatch with testflight=false: unsigned build, no secrets,
+#   so PRs from forks are safe.
+# - Push to main that touches watch/, v1.2.3 tags, manual dispatch of any branch: signed archive
+#   uploaded to TestFlight. The tag also sets the version (1.2.3); the build number is the run number.
+#   Only this archive carries the relay URL (variable RELAY_URL) and its pairing secret (secret
+#   PAIRING_SECRET, TZ §5.2); without them the app builds and shows the relay as not configured.
 # Other events skip the workflow to spare the scarce macOS runners.
 name: watch
 
@@ -19,6 +22,11 @@ on:
       - .github/workflows/watch.yml
       - .github/actions/xcodegen/**
   workflow_dispatch:
+    inputs:
+      testflight:
+        description: Sign and upload to TestFlight; off builds unsigned, as on a PR
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -35,7 +43,7 @@ env:
 
 jobs:
   build:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.testflight)
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -56,7 +64,7 @@ jobs:
 
   testflight:
     # Never on pull_request: this job holds the signing secrets (ADR 0004).
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.testflight)
     runs-on: macos-15
     timeout-minutes: 30
     # One upload at a time across all refs, so a lower build number never lands after a higher one.
@@ -111,6 +119,8 @@ jobs:
         working-directory: watch
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELAY_URL: ${{ vars.RELAY_URL }}
+          PAIRING_SECRET: ${{ secrets.PAIRING_SECRET }}
         run: |
           versions=(CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER")
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
@@ -123,6 +133,8 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             IOS_PROFILE_UUID="$IOS_PROFILE_UUID" \
             WATCH_PROFILE_UUID="$WATCH_PROFILE_UUID" \
+            RELAY_URL="$RELAY_URL" \
+            PAIRING_SECRET="$PAIRING_SECRET" \
             "${versions[@]}" \
             archive
 
