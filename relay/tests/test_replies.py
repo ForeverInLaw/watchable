@@ -1,6 +1,7 @@
 """Replies from the watch: POST /v1/events/{event_id}/reply hands reply.execute to FCM (TZ F3)."""
 
 import json
+import logging
 import sqlite3
 import uuid
 from typing import Any
@@ -243,7 +244,7 @@ def fcm_error(status: int, error_code: str) -> dict[str, Any]:
     return {"error": {"code": status, "status": error_code, "details": [detail]}}
 
 
-def failure_of(settings: RelaySettings) -> tuple[str, str | None, str | None]:
+def outcome_of(settings: RelaySettings) -> tuple[str, str | None, str | None]:
     """Status, error and completed_at of the one stored reply."""
     [stored] = stored_replies(settings)
     return stored["status"], stored["error"], stored["completed_at"]
@@ -264,7 +265,7 @@ def test_reply_to_a_companion_without_an_fcm_token_fails(
         "message": "",
         "retryable": False,
     }
-    assert failure_of(settings) == ("failed", "fcm_token_missing", "2026-11-25T12:00:00Z")
+    assert outcome_of(settings) == ("failed", "fcm_token_missing", "2026-11-25T12:00:00Z")
     assert fcm.requests == []
 
 
@@ -279,7 +280,7 @@ def test_an_unregistered_fcm_token_fails_the_reply_and_is_not_used_again(
     assert response.status_code == 503
     assert error_of(response)["code"] == "fcm_rejected"
     assert error_of(response)["retryable"] is False
-    assert failure_of(settings) == ("failed", "fcm_rejected", "2026-11-25T12:00:00Z")
+    assert outcome_of(settings) == ("failed", "fcm_rejected", "2026-11-25T12:00:00Z")
 
     another = post_reply(client, paired.watch_token, reply=another_reply())
 
@@ -326,7 +327,7 @@ def test_a_transient_fcm_error_fails_the_reply_and_may_be_retried(
     assert response.status_code == 503
     assert error_of(response)["code"] == "fcm_unavailable"
     assert error_of(response)["retryable"] is True
-    assert failure_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
+    assert outcome_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
 
 
 def test_an_unreachable_fcm_fails_the_reply_and_may_be_retried(
@@ -340,7 +341,7 @@ def test_an_unreachable_fcm_fails_the_reply_and_may_be_retried(
     assert response.status_code == 503
     assert error_of(response)["code"] == "fcm_unavailable"
     assert error_of(response)["retryable"] is True
-    assert failure_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
+    assert outcome_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
 
 
 def test_a_reply_resent_after_a_transient_fcm_error_goes_out_again(
@@ -355,7 +356,7 @@ def test_a_reply_resent_after_a_transient_fcm_error_goes_out_again(
 
     assert response.status_code == 202
     assert len(fcm.requests) == 2
-    assert failure_of(settings) == ("queued", None, None)
+    assert outcome_of(settings) == ("queued", None, None)
 
 
 def test_a_reply_resent_after_fcm_rejected_it_is_a_duplicate(
@@ -397,3 +398,107 @@ def test_thirty_first_reply_in_a_minute_is_rate_limited(
     assert limited.headers["Retry-After"] == "30"
     assert later.status_code == 202
     assert len(fcm.requests) == 31
+
+
+RESULT_SENT: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-result.json")
+RESULT_FAILED: dict[str, Any] = load_json(
+    SOURCE_PROTOCOL_DIR / "examples" / "reply-result.failed.json"
+)
+
+
+def post_result(
+    client: TestClient, token: str, result: object, reply_id: str = REPLY["reply_id"]
+) -> Response:
+    """Posts what became of a reply with `token`, as the Companion does."""
+    return client.post(f"/v1/replies/{reply_id}/result", json=result, headers=bearer(token))
+
+
+@pytest.fixture
+def replied(client: TestClient, paired: Pair) -> Pair:
+    """A pair whose watch has replied to the Companion's event, and FCM took the reply."""
+    post_event(client, paired.android_token)
+    assert post_reply(client, paired.watch_token).status_code == 202
+    return paired
+
+
+def test_companion_reports_a_sent_reply(
+    client: TestClient, settings: RelaySettings, clock: FakeClock, replied: Pair
+) -> None:
+    clock.advance(3)
+
+    response = post_result(client, replied.android_token, RESULT_SENT)
+
+    assert response.status_code == 204
+    assert outcome_of(settings) == ("sent", None, "2026-11-25T12:00:03Z")
+
+
+def test_companion_reports_a_failed_reply(
+    client: TestClient, settings: RelaySettings, replied: Pair
+) -> None:
+    response = post_result(client, replied.android_token, RESULT_FAILED)
+
+    assert response.status_code == 204
+    assert outcome_of(settings) == ("failed", "notification_gone", "2026-11-25T12:00:00Z")
+
+
+def test_a_second_result_is_a_duplicate_and_changes_nothing(
+    client: TestClient, settings: RelaySettings, replied: Pair
+) -> None:
+    post_result(client, replied.android_token, RESULT_SENT)
+
+    response = post_result(client, replied.android_token, RESULT_FAILED)
+
+    assert response.status_code == 409
+    assert error_of(response)["code"] == "duplicate"
+    assert outcome_of(settings)[:2] == ("sent", None)
+
+
+def test_result_needs_the_companion_token(
+    client: TestClient, settings: RelaySettings, replied: Pair
+) -> None:
+    response = post_result(client, replied.watch_token, RESULT_SENT)
+
+    assert response.status_code == 401
+    assert error_of(response)["code"] == "invalid_token"
+    assert outcome_of(settings)[0] == "queued"
+
+
+def test_result_for_another_companions_reply_looks_like_an_unknown_reply(
+    client: TestClient, settings: RelaySettings, replied: Pair
+) -> None:
+    repaired = pair(client)
+    unknown = post_result(
+        client, repaired.android_token, RESULT_SENT, reply_id=another_reply()["reply_id"]
+    )
+
+    response = post_result(client, repaired.android_token, RESULT_SENT)
+
+    assert response.status_code == 404
+    assert error_of(response)["code"] == "not_found"
+    assert response.json() == unknown.json()
+    assert outcome_of(settings)[0] == "queued"
+
+
+def test_result_breaking_the_schema_is_refused(client: TestClient, replied: Pair) -> None:
+    response = post_result(client, replied.android_token, {"status": "failed"})
+
+    assert response.status_code == 400
+    assert error_of(response)["code"] == "invalid_request"
+
+
+def test_every_reply_outcome_is_logged_without_its_text(
+    client: TestClient, fcm: FakeFcmEndpoint, caplog: pytest.LogCaptureFixture, paired: Pair
+) -> None:
+    caplog.set_level(logging.INFO, logger="relay")
+    post_event(client, paired.android_token)
+    post_reply(client, paired.watch_token)
+    post_result(client, paired.android_token, RESULT_FAILED)
+    fcm.status, fcm.body = 404, fcm_error(404, "UNREGISTERED")
+    rejected = another_reply()
+    post_reply(client, paired.watch_token, reply=rejected)
+
+    logged = [record.getMessage() for record in caplog.records if record.name == "relay.replies"]
+
+    assert any(REPLY["reply_id"] in line and "notification_gone" in line for line in logged)
+    assert any(rejected["reply_id"] in line and "fcm_rejected" in line for line in logged)
+    assert not any(REPLY["text"] in line for line in logged)

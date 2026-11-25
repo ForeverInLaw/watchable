@@ -1,10 +1,11 @@
 """Replies from the watch, kept in SQLite and handed to the Companion over FCM (docs/TZ.md F3)."""
 
+import logging
 from datetime import datetime
 from enum import StrEnum
-from typing import NoReturn, TypedDict
+from typing import Literal, NoReturn, NotRequired, TypedDict
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -13,12 +14,17 @@ from relay.devices import DeviceRegistry
 from relay.fcm import MAX_DATA_BYTES, FcmSender, FcmUnreachable, envelope, fits_fcm
 from relay.protocol import rfc3339
 from relay.store import EventStore, StoredEvent
-from relay.tables import replies
+from relay.tables import notification_events, replies
 
 REPLY_SCHEMA = "reply-request.schema.json"
+RESULT_SCHEMA = "reply-result.schema.json"
 REPLY_EXECUTE = "reply.execute"
 # Replies the relay takes from the watch in any minute (§5.1).
 REPLIES_PER_MINUTE = 30
+
+# What became of each reply, so an operator can tell why one never reached the chat.
+# Never the reply text (§9.7).
+log = logging.getLogger(__name__)
 
 
 class ReplyRequest(TypedDict):
@@ -46,6 +52,17 @@ class ReplyError(StrEnum):
     FCM_REJECTED = "fcm_rejected"
     # FCM could not be reached or is overloaded; the same reply may be sent again.
     FCM_UNAVAILABLE = "fcm_unavailable"
+    # What the Companion reports: the notification has left the shade, or the listener
+    # is not connected; or no action of the notification takes free text.
+    NOTIFICATION_GONE = "notification_gone"
+    REMOTE_INPUT_UNSUPPORTED = "remote_input_unsupported"
+
+
+class ReplyResult(TypedDict):
+    """Body of POST /v1/replies/{reply_id}/result, shaped by protocol/schema/reply-result."""
+
+    status: Literal["sent", "failed"]
+    error: NotRequired[Literal["notification_gone", "remote_input_unsupported"]]
 
 
 class UnknownEvent(Exception):
@@ -62,7 +79,11 @@ class NoCompanion(Exception):
 
 
 class DuplicateReply(Exception):
-    """The relay already has a reply with this reply_id, and FCM was not unavailable for it."""
+    """The relay already has this reply: sent to FCM, or with the result reported."""
+
+
+class UnknownReply(Exception):
+    """No reply with this id answers an event of the Companion."""
 
 
 class Undelivered(Exception):
@@ -113,6 +134,33 @@ class ReplyStore:
         async with self._engine.begin() as connection:
             result = await connection.execute(statement)
         return result.rowcount == 1
+
+    async def complete(
+        self, reply_id: str, android_device_id: str, result: ReplyResult, now: datetime
+    ) -> None:
+        """Records the Companion's result of a queued reply to one of its events.
+
+        Raises UnknownReply alike for an unknown reply and one to another device's event,
+        DuplicateReply when the reply is no longer queued.
+        """
+        own_events = select(notification_events.c.id).where(
+            notification_events.c.android_device_id == android_device_id
+        )
+        owned = (replies.c.id == reply_id) & replies.c.event_id.in_(own_events)
+        statement = (
+            update(replies)
+            .where(owned, replies.c.status == ReplyStatus.QUEUED)
+            .values(
+                status=ReplyStatus(result["status"]),
+                error=result.get("error"),
+                completed_at=rfc3339(now),
+            )
+        )
+        async with self._engine.begin() as connection:
+            if (await connection.execute(statement)).rowcount == 1:
+                return
+            known = (await connection.execute(select(replies.c.id).where(owned))).first()
+        raise DuplicateReply if known else UnknownReply
 
     async def fail(self, reply_id: str, reason: ReplyError, now: datetime) -> None:
         statement = (
@@ -188,12 +236,19 @@ class ReplyDispatch:
         except FcmUnreachable:
             await self._fail(reply_id, ReplyError.FCM_UNAVAILABLE, "FCM unreachable")
         if result.ok:
+            log.info("reply %s to event %s: handed to FCM", reply_id, event_id)
             return
         if result.unregistered:
             await self._devices.drop_push_token(companion.device_id, companion.fcm_token)
         reason = ReplyError.FCM_UNAVAILABLE if result.retryable else ReplyError.FCM_REJECTED
         await self._fail(reply_id, reason, f"FCM answered {result.status} {result.error}")
 
+    async def complete(self, reply_id: str, android_device_id: str, result: ReplyResult) -> None:
+        """Records what the Companion made of the reply; raises as ReplyStore.complete."""
+        await self._store.complete(reply_id, android_device_id, result, self._clock())
+        log.info("reply %s: %s %s", reply_id, result["status"], result.get("error", ""))
+
     async def _fail(self, reply_id: str, reason: ReplyError, message: str) -> NoReturn:
         await self._store.fail(reply_id, reason, self._clock())
+        log.warning("reply %s: failed %s (%s)", reply_id, reason, message)
         raise Undelivered(reason, message)

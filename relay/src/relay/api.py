@@ -19,7 +19,7 @@ from relay.intake import NotificationIntake
 from relay.pairing import PairCompleteRequest, Pairing, PairStartRequest
 from relay.protocol import BodyParser
 from relay.ratelimit import RateLimit
-from relay.replies import ReplyDispatch, ReplyRequest
+from relay.replies import ReplyDispatch, ReplyRequest, ReplyResult
 
 
 class ApiError(Exception):
@@ -104,6 +104,7 @@ class Relay:
     push_token_parser: BodyParser[PushTokenRequest]
     watch_push_token_parser: BodyParser[PushTokenRequest]
     reply_parser: BodyParser[ReplyRequest]
+    result_parser: BodyParser[ReplyResult]
 
 
 def current_relay(request: Request) -> Relay:

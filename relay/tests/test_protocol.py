@@ -43,6 +43,7 @@ def test_example_passes_its_schema(example: Path) -> None:
 
 COMPANION_SCHEMA = "notification-event.schema.json"
 WATCH_SCHEMA = "notification-event-watch.schema.json"
+RESULT_SCHEMA = "reply-result.schema.json"
 COMPANION_EVENT: dict[str, Any] = load_json(
     SOURCE_PROTOCOL_DIR / "examples" / "notification-event.json"
 )
@@ -73,6 +74,9 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"public_key": "k"}, "additionalProperties"),
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"pairing_code": "1234567"}, "pattern"),
         (PAIR_COMPLETE_SCHEMA, PAIR_COMPLETE | {"platform": "watchos"}, "const"),
+        (RESULT_SCHEMA, {"status": "failed"}, "required"),
+        (RESULT_SCHEMA, {"status": "sent", "error": "notification_gone"}, "not"),
+        (RESULT_SCHEMA, {"status": "failed", "error": "timeout"}, "enum"),
     ],
     ids=[
         "companion: posted_at not in UTC",
@@ -90,6 +94,9 @@ def without(event: dict[str, Any], key: str) -> dict[str, Any]:
         "pair complete: public_key",
         "pair complete: 7-digit code",
         "pair complete: not android",
+        "reply result: failed without error",
+        "reply result: sent with error",
+        "reply result: unknown error",
     ],
 )
 def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:

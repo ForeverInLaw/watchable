@@ -3,6 +3,7 @@
 Run with `uvicorn --factory relay.app:app_from_env`; see the README.
 """
 
+import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -28,7 +29,13 @@ from relay.pairing import (
 )
 from relay.protocol import BodyParser
 from relay.ratelimit import RateLimit
-from relay.replies import REPLIES_PER_MINUTE, REPLY_SCHEMA, ReplyDispatch, ReplyStore
+from relay.replies import (
+    REPLIES_PER_MINUTE,
+    REPLY_SCHEMA,
+    RESULT_SCHEMA,
+    ReplyDispatch,
+    ReplyStore,
+)
 from relay.routes import events, pairing, replies
 from relay.settings import RelaySettings
 from relay.store import EventStore
@@ -75,6 +82,7 @@ def create_app(
             push_token_parser=BodyParser(protocol_dir, PUSH_TOKEN_SCHEMA),
             watch_push_token_parser=BodyParser(protocol_dir, WATCH_PUSH_TOKEN_SCHEMA),
             reply_parser=BodyParser(protocol_dir, REPLY_SCHEMA),
+            result_parser=BodyParser(protocol_dir, RESULT_SCHEMA),
         )
         yield
         await fcm.close()
@@ -88,8 +96,19 @@ def create_app(
     return app
 
 
+def log_to_stderr() -> None:
+    """Shows the relay's own INFO records, such as what became of each reply, next to
+    uvicorn's; uvicorn configures only its own loggers."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger = logging.getLogger("relay")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def app_from_env() -> FastAPI:
     """Uvicorn factory: settings from the environment, real APNs and FCM connections."""
+    log_to_stderr()
     return create_app(
         RelaySettings(),
         connect_apns=lambda: ApnsSender.connect(ApnsSettings()),

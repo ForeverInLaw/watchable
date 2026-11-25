@@ -1,9 +1,23 @@
-"""Replies from the watch: POST /v1/events/{event_id}/reply (docs/TZ.md F3, §5.6)."""
+"""Replies from the watch and what the Companion made of them (docs/TZ.md F3, §5.6)."""
 
 from fastapi import APIRouter, Request, Response, status
 
-from relay.api import ApiError, CurrentRelay, CurrentWatch, invalid_token, parse_body
-from relay.replies import DuplicateReply, InvalidReply, NoCompanion, Undelivered, UnknownEvent
+from relay.api import (
+    ApiError,
+    CurrentAndroid,
+    CurrentRelay,
+    CurrentWatch,
+    invalid_token,
+    parse_body,
+)
+from relay.replies import (
+    DuplicateReply,
+    InvalidReply,
+    NoCompanion,
+    Undelivered,
+    UnknownEvent,
+    UnknownReply,
+)
 
 router = APIRouter()
 
@@ -48,3 +62,22 @@ async def reply(
             retryable=error.retryable,
         ) from error
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.post("/v1/replies/{reply_id}/result", status_code=status.HTTP_204_NO_CONTENT)
+async def reply_result(
+    reply_id: str, request: Request, relay: CurrentRelay, android: CurrentAndroid
+) -> Response:
+    """The Companion reports whether it sent the reply; nothing of it reaches the watch."""
+    body = await parse_body(request, relay.result_parser)
+    try:
+        await relay.replies.complete(reply_id, android.id, body)
+    except UnknownReply as error:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND, "not_found", "No such reply", retryable=False
+        ) from error
+    except DuplicateReply as error:
+        raise ApiError(
+            status.HTTP_409_CONFLICT, "duplicate", "Reply already has a result", retryable=False
+        ) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
