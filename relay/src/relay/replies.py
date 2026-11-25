@@ -50,7 +50,7 @@ class ReplyError(StrEnum):
     FCM_TOKEN_MISSING = "fcm_token_missing"
     # FCM refused the message; sending it again will not help.
     FCM_REJECTED = "fcm_rejected"
-    # FCM could not be reached or is overloaded; the same reply may be sent again.
+    # FCM could not be reached or is overloaded; a later reply may go through.
     FCM_UNAVAILABLE = "fcm_unavailable"
     # What the Companion reports: the notification has left the shade, or the listener
     # is not connected; or no action of the notification takes free text.
@@ -99,8 +99,8 @@ class Undelivered(Exception):
         return self.reason is ReplyError.FCM_UNAVAILABLE
 
 
-# A reply FCM was unavailable for: the watch may send it again, and FCM may have taken it
-# anyway with its answer lost, so the Companion's result for it still counts.
+# A reply FCM was unavailable for: FCM may have taken it anyway with its answer lost,
+# so the Companion's result for it still counts.
 FCM_WAS_UNAVAILABLE = (replies.c.status == ReplyStatus.FAILED) & (
     replies.c.error == ReplyError.FCM_UNAVAILABLE
 )
@@ -113,28 +113,19 @@ class ReplyStore:
     async def add(
         self, reply: ReplyRequest, event_id: str, watch_device_id: str, now: datetime
     ) -> bool:
-        """Stores `reply` as queued; False when its reply_id is already stored.
-
-        A reply to the same event that FCM was unavailable for is queued again instead,
-        as its 503 told the watch that sending it again may help.
-        """
-        statement = insert(replies).values(
-            id=reply["reply_id"],
-            event_id=event_id,
-            watch_device_id=watch_device_id,
-            text=reply["text"],
-            status=ReplyStatus.QUEUED,
-            created_at=rfc3339(now),
-        )
-        statement = statement.on_conflict_do_update(
-            index_elements=[replies.c.id],
-            set_={
-                "text": statement.excluded.text,
-                "status": ReplyStatus.QUEUED,
-                "error": None,
-                "completed_at": None,
-            },
-            where=(replies.c.event_id == event_id) & FCM_WAS_UNAVAILABLE,
+        """Stores `reply` as queued; False when its reply_id is already stored, whatever
+        became of it: the relay sends one FCM message per reply (§5.6)."""
+        statement = (
+            insert(replies)
+            .values(
+                id=reply["reply_id"],
+                event_id=event_id,
+                watch_device_id=watch_device_id,
+                text=reply["text"],
+                status=ReplyStatus.QUEUED,
+                created_at=rfc3339(now),
+            )
+            .on_conflict_do_nothing(index_elements=[replies.c.id])
         )
         async with self._engine.begin() as connection:
             result = await connection.execute(statement)

@@ -344,7 +344,7 @@ def test_an_unreachable_fcm_fails_the_reply_and_may_be_retried(
     assert outcome_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
 
 
-def test_a_reply_resent_after_a_transient_fcm_error_goes_out_again(
+def test_a_reply_resent_after_a_transient_fcm_error_is_a_duplicate(
     client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
 ) -> None:
     post_event(client, paired.android_token)
@@ -354,9 +354,11 @@ def test_a_reply_resent_after_a_transient_fcm_error_goes_out_again(
 
     response = post_reply(client, paired.watch_token)
 
-    assert response.status_code == 202
-    assert len(fcm.requests) == 2
-    assert outcome_of(settings) == ("queued", None, None)
+    # FCM may have taken the first message, so the reply_id never goes out twice.
+    assert response.status_code == 409
+    assert error_of(response)["code"] == "duplicate"
+    assert len(fcm.requests) == 1
+    assert outcome_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
 
 
 def test_a_reply_resent_after_fcm_rejected_it_is_a_duplicate(

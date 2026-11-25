@@ -572,7 +572,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 - `400 invalid_request` — тело не по схеме, событие без `replyable: true` или envelope не влезает в FCM.
 - `401 invalid_token` — не токен часов или у часов нет спаренного Companion.
 - `404 not_found` — среди событий спаренного Companion нет такого или оно истекло (7 дней). Событие другого устройства получает тот же ответ, что и неизвестное, поэтому ответ не выдаёт, какие `event_id` существуют.
-- `409 duplicate` — reply с этим `reply_id` уже есть, FCM повторно не уходит. Исключение — reply, упавший с `fcm_unavailable`: его повтор с тем же `reply_id` на то же событие уходит в FCM заново, ведь `503` с `retryable: true` обещал, что повтор может пройти.
+- `409 duplicate` — reply с этим `reply_id` уже есть, что бы с ним ни стало, и FCM повторно не уходит. Это касается и reply, упавшего с `fcm_unavailable`: FCM мог взять сообщение, а его ответ потеряться, и второе сообщение с тем же `reply_id` дало бы в чате два ответа.
 - `503 fcm_token_missing`, `503 fcm_rejected`, `503 fcm_unavailable` — FCM сообщение не принял; reply получает `failed` с этим кодом в `error` (§5.10).
 
 FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
@@ -659,10 +659,10 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `500/503` — retry, если в теле ошибки `retryable: true`; при `retryable: false` повтор не поможет (например, APNs отклонил токен часов).
 - `503 fcm_token_missing` — у спаренного Companion нет FCM-токена: он его не прислал, или FCM назвал прежний `UNREGISTERED`; не retry, Companion присылает новый токен (§7.5).
 - `503 fcm_rejected` — FCM отклонил сообщение, например `UNREGISTERED` или `INVALID_ARGUMENT`; не retry.
-- `503 fcm_unavailable` — FCM недоступен или перегружен: нет связи, `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429 или 5xx; retry с тем же `reply_id`.
+- `503 fcm_unavailable` — FCM недоступен или перегружен: нет связи, `QUOTA_EXCEEDED`, `UNAVAILABLE`, `INTERNAL`, HTTP 429 или 5xx. Повтор может пройти, но только как новый reply: тот же `reply_id` получает `409 duplicate`. Часы ответы не повторяют (F3).
 - 5xx без тела ошибки из §5.1 (его отдаёт туннель или прокси перед relay, например 502) — retry.
 - APNs: `BadDeviceToken`, `Unregistered` — пометить токен; `TooManyRequests` — backoff; `PayloadTooLarge` — обрезать.
-- FCM: `UNREGISTERED` — relay забывает FCM-токен Companion, если тот ещё не сменился; `QUOTA_EXCEEDED` и другие временные ошибки — `503 fcm_unavailable`, retry с backoff.
+- FCM: `UNREGISTERED` — relay забывает FCM-токен Companion, если тот ещё не сменился; `QUOTA_EXCEEDED` и другие временные ошибки — `503 fcm_unavailable`; relay сам сообщение не повторяет.
 
 ### 5.11 BLE GATT (v1.1)
 
