@@ -105,3 +105,19 @@ def test_alert_title_names_app_and_sender(
     )
 
     assert alert_push(event).title == title
+
+
+def test_title_too_long_on_its_own_is_cut_too() -> None:
+    push = AlertPush(
+        title="Алиса " * 1000,
+        body="Привет",
+        source_package="com.whatsapp",
+        event_id="018f3a5e-7c2b-7d4e-9a1b-3c5d7e9f1a2b",
+        replyable=True,
+    )
+
+    alert_payload = push.to_payload()["aps"]["alert"]
+
+    assert payload_size(push) <= MAX_PAYLOAD_BYTES
+    assert alert_payload["title"].endswith("…")
+    assert "body" not in alert_payload

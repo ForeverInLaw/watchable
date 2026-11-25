@@ -1,6 +1,7 @@
 """APNs delivery of watch alerts: payload and headers per docs/TZ.md §5.5."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, Self
@@ -56,26 +57,24 @@ class AlertPush:
     replyable: bool
 
     def to_payload(self) -> dict[str, Any]:
-        """APNs JSON body, its alert body cut to fit MAX_PAYLOAD_BYTES (TZ §5.5).
+        """APNs JSON body, cut to fit MAX_PAYLOAD_BYTES (TZ §5.5).
 
-        Alerts from one app share a thread on the watch.
+        The body is cut first. A title too long to fit even with an empty body is cut
+        as well, and the body is dropped. Alerts from one app share a thread on the watch.
         """
-        payload = self._payload(self.body)
-        if self.body is None or payload_size(payload) <= MAX_PAYLOAD_BYTES:
+        payload = self._payload(self.title, self.body)
+        if payload_size(payload) <= MAX_PAYLOAD_BYTES:
             return payload
-        # The longest prefix of the body that fits with the ellipsis, in code points.
-        # JSON escapes make the size uneven per character, so search rather than compute.
-        low, high = 0, len(self.body)
-        while low < high:
-            middle = (low + high + 1) // 2
-            if payload_size(self._payload(self.body[:middle] + ELLIPSIS)) <= MAX_PAYLOAD_BYTES:
-                low = middle
-            else:
-                high = middle - 1
-        return self._payload(self.body[:low] + ELLIPSIS)
+        if self.body is not None:
+            body = cut_to_fit(self.body, lambda body: self._payload(self.title, body))
+            if body is not None:
+                return self._payload(self.title, body)
+        title = cut_to_fit(self.title, lambda title: self._payload(title, None))
+        # None only when source_package alone overflows; APNs then refuses the push.
+        return self._payload(title or ELLIPSIS, None)
 
-    def _payload(self, body: str | None) -> dict[str, Any]:
-        alert = {"title": self.title}
+    def _payload(self, title: str, body: str | None) -> dict[str, Any]:
+        alert = {"title": title}
         if body is not None:
             alert["body"] = body
         aps: dict[str, Any] = {
@@ -92,6 +91,24 @@ class AlertPush:
             "replyable": self.replyable,
             "source_package": self.source_package,
         }
+
+
+def cut_to_fit(text: str, build: Callable[[str], dict[str, Any]]) -> str | None:
+    """The longest prefix of `text`, ending in the ellipsis, whose payload fits.
+
+    None when even the ellipsis alone does not fit. JSON escapes make the size uneven
+    per character, so this searches over code points rather than computes.
+    """
+    if payload_size(build(ELLIPSIS)) > MAX_PAYLOAD_BYTES:
+        return None
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if payload_size(build(text[:middle] + ELLIPSIS)) <= MAX_PAYLOAD_BYTES:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low] + ELLIPSIS
 
 
 def payload_size(payload: dict[str, Any]) -> int:

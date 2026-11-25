@@ -1,5 +1,6 @@
 """Notification events from the Companion (docs/TZ.md §5.4) and the alert each becomes."""
 
+import json
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
@@ -49,6 +50,11 @@ class EventParser:
         error = next(self._validator.iter_errors(body), None)
         if error is not None:
             raise InvalidEvent(f"{error.json_path} fails {error.validator}")
+        # JSON escapes can carry a lone surrogate, which neither SQLite nor APNs accepts.
+        try:
+            json.dumps(body, ensure_ascii=False).encode()
+        except UnicodeEncodeError as encode_error:
+            raise InvalidEvent("$ has text that is not valid Unicode") from encode_error
         # The schema has just proven the shape the TypedDict describes.
         return cast(NotificationEvent, body)
 

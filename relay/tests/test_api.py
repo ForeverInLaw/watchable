@@ -1,5 +1,6 @@
 """The relay HTTP API, driven through FastAPI with APNs faked and a fresh SQLite file."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -224,4 +225,21 @@ def test_body_over_32_kb_is_refused(client: TestClient, apns: FakeApnsClient) ->
         "message": "Body over 32768 bytes",
         "retryable": False,
     }
+    assert apns.requests == []
+
+
+def test_text_that_is_not_valid_unicode_is_refused(
+    client: TestClient, apns: FakeApnsClient
+) -> None:
+    # A lone surrogate is valid JSON (an escape) but cannot be stored or sent as UTF-8.
+    content = json.dumps(EVENT | {"title": "\ud800"}).encode()
+
+    response = client.post(
+        "/v1/events/notification",
+        content=content,
+        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert error_of(response)["code"] == "invalid_request"
     assert apns.requests == []

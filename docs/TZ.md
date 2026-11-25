@@ -484,7 +484,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 ```
 
 Правила:
-- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля — `400 invalid_request`.
+- Все ключи обязательны. `null` допустим только у `source_app`, `group_key`, `title`, `body`, `subtext` и `category`; неизвестные поля и строки с одиночными суррогатами (`\ud800` в JSON), которые нельзя записать в UTF-8, — `400 invalid_request`.
 - Companion присылает `body` целиком, его ограничивает только размер тела (§5.1). Relay хранит полный текст в `body_full` (§6.1). Если он длиннее 3000 символов (Unicode code points), relay отдаёт часам первые 3000 и `body_truncated: true`, а полный текст — через `GET /v1/events/{id}`.
 - `posted_at` — RFC3339 UTC с суффиксом `Z`.
 - `notification_key` обязателен для reply.
@@ -530,7 +530,7 @@ Companion отправляет событие телом `POST /v1/events/notifi
 
 Ограничения:
 - payload ≤ 4 КБ;
-- если payload длиннее — relay и тестовый скрипт обрезают `alert.body` до самого длинного начала, с которым payload в UTF-8 JSON с `…` в конце укладывается в 4 КБ; полный текст доступен через `GET /v1/events/{id}`;
+- если payload длиннее — relay и тестовый скрипт обрезают `alert.body` до самого длинного начала, с которым payload в UTF-8 JSON с `…` в конце укладывается в 4 КБ; если не помещается даже заголовок с `…` вместо тела, тело убирается и так же обрезается `alert.title`; полный текст доступен через `GET /v1/events/{id}`;
 - для фоновой синхронизации — `apns-push-type: background`, `content-available: 1`, priority 5; не гарантируется.
 
 ### 5.6 Reply
