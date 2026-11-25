@@ -7,7 +7,7 @@ Companion at `POST /v1/events/notification`, keeps them in SQLite and pushes eac
 to the paired watch through APNs. FCM, the outbox worker, retention and Docker Compose
 follow §9.
 
-## Running locally through a tunnel
+## Running through a named tunnel
 
 The relay reads its settings from the repo-root `.env` (template: `.env.example`):
 the `APNS_*` credentials, `PAIRING_SECRET` (at least 32 characters, the same value the
@@ -19,16 +19,21 @@ creates the database and applies the migrations. From the repo root:
 uv run --project relay --env-file .env uvicorn --factory relay.app:app_from_env --port 8000
 ```
 
-`curl localhost:8000/healthz` answers `{"status":"ok"}` once the relay is up. To reach it
-from the phone without a server, open a Cloudflare quick tunnel in a second terminal:
+`curl localhost:8000/healthz` answers `{"status":"ok"}` once the relay is up. The phone and
+the watch reach it through a Cloudflare named tunnel at the stable `https://watch.but.red`,
+because the watch build carries the URL and a new one means a new TestFlight build. Create
+the tunnel once in the Cloudflare dashboard (Zero Trust → Networks → Tunnels → Create a
+tunnel, type Cloudflared), add the public hostname `watch.but.red` with the service
+`http://localhost:8000`, and install the connector on the relay's machine with the token
+the dashboard shows:
 
 ```bash
-cloudflared tunnel --url http://localhost:8000
+sudo cloudflared service install <tunnel token>
 ```
 
-It prints a `https://<random>.trycloudflare.com` address that changes on every run; put
-it in `android/local.properties` as `relay.url` and rebuild the Companion
-(`../android/README.md`).
+`curl https://watch.but.red/healthz` then answers like the local check. The same URL is
+the `RELAY_URL` GitHub variable (watch build) and `relay.url` in
+`android/local.properties` (Companion, `../android/README.md`).
 
 To pair by hand, start a session as the watch would, with the `PAIRING_SECRET` value
 from `.env` and the protocol example in place of the watch's APNs token:
@@ -74,8 +79,9 @@ The APNs credentials come from the `APNS_*` variables in the repo-root `.env`
 uv run --project relay --env-file .env send-test-push <device-token>
 ```
 
-The device token is the hex string the watch app shows in groups of 8; pass it whole or
-as the groups. By default the body carries the
+The device token is the watch's APNs token, which the relay keeps after pairing: `push_token`
+of the unrevoked `watchos` row in `devices` of `data/relay.db`. Groups separated by spaces
+are accepted too. By default the body carries the
 send time, so the delay is visible on the watch, and APNs keeps the push for an hour
 while the watch is offline (`--ttl 0` tries once). See `--help` for the payload options.
 

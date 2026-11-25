@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Nothing leaves the phone through backup or device transfer: the build carries the relay token (TZ §10). -->
+<!-- Nothing leaves the phone through backup or device transfer: files/datastore holds the device token from pairing (TZ §10). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" />

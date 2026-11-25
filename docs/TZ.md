@@ -217,7 +217,7 @@ BLE не используется для основного потока уве�
   - `watch_device_id` — для `POST /v1/devices/{id}/push-token`
   - `watch_device_token` (32 байта, base64url)
   - `expires_at` (+10 минут)
-- Watch app сохраняет `watch_device_token` в Keychain и показывает код крупным шрифтом.
+- Watch app показывает код крупным шрифтом. Пока код на экране, сессия живёт в памяти; `watch_device_token` попадает в Keychain после `paired=true`, поэтому брошенный повторный pairing оставляет текущий.
 - Активная сессия одна: новый `pair/start` гасит прежнюю, её код больше не принимается. `pair/start` relay принимает не чаще 10 раз в минуту, дальше `429` с `Retry-After`.
 - Пользователь вводит код в Companion.
 - Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов. Pairing-секрет Companion не нужен.
@@ -922,7 +922,6 @@ android/
 - HealthKit.
 - WidgetKit (v1.1).
 - URLSession.
-- QR-код токена: SwiftPM-пакет `fwcd/swift-qrcode-generator` (MIT, чистый Swift; CoreImage на watchOS нет).
 - Проект: XcodeGen (`watch/project.yml`); `.xcodeproj` генерируется и не коммитится.
 - Тип: **watch-only/independent**; iOS companion не нужен. Xcode создаёт stub iOS wrapper только для упаковки и установки.
 
@@ -945,7 +944,7 @@ watch/
 ### 8.3 Lifecycle и push
 
 - `@WKApplicationDelegateAdaptor` (один watch-таргет, без WatchKit extension) → `WKApplication.shared().registerForRemoteNotifications()` на каждом запуске.
-- `didRegisterForRemoteNotifications(withDeviceToken:)` → отправить на relay (в M0 — показать на экране как QR-код и hex-текст).
+- `didRegisterForRemoteNotifications(withDeviceToken:)` → без pairing начать `pair/start`, спаренные часы отправляют токен в `push-token`, если он сменился (F1).
 - `userNotificationCenter(_:willPresent:)` возвращает `.banner`, `.list`, `.sound`, иначе пуш при открытом приложении не показывается.
 - `UNUserNotificationCenter.current().delegate`.
 - Запросить `.alert`, `.sound`, `.badge`.
@@ -1249,7 +1248,7 @@ watch.example.com {
   - Оба macOS-job используют Xcode 26.3 (`DEVELOPER_DIR`): App Store Connect принимает только сборки на SDK 26, а один Xcode гарантирует, что зелёный PR соберётся и при выгрузке.
   - Подпись только в конфигурации Release: `CODE_SIGN_STYLE=Manual`, профили выбираются по UUID, которые CI читает из самих профилей; bundle id нигде, кроме `project.yml`, не повторяется.
   - Watch app объявляет `ITSAppUsesNonExemptEncryption=NO` (только HTTPS), чтобы TestFlight не спрашивал про экспортный контроль на каждой сборке. Пересмотреть, если появится собственное шифрование.
-- Подписывающие секреты — только в GitHub Actions secrets: `DIST_CERT_P12_BASE64` и `DIST_CERT_P12_PASSWORD` (сертификат distribution), `PROFILE_IOS_BASE64` и `PROFILE_WATCH_BASE64` (App Store profiles iOS-обёртки и watch app), `ASC_KEY_P8_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID` (App Store Connect API key), `APPLE_TEAM_ID`. Там же `PAIRING_SECRET` — тот же, что в `.env` relay; его зашивает в сборку часов WATCH-22 (F1).
+- Подписывающие секреты — только в GitHub Actions secrets: `DIST_CERT_P12_BASE64` и `DIST_CERT_P12_PASSWORD` (сертификат distribution), `PROFILE_IOS_BASE64` и `PROFILE_WATCH_BASE64` (App Store profiles iOS-обёртки и watch app), `ASC_KEY_P8_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID` (App Store Connect API key), `APPLE_TEAM_ID`. Там же `PAIRING_SECRET` — тот же, что в `.env` relay; рядом variable `RELAY_URL`. Оба попадают в сборку часов только в TestFlight-job через build settings и Info.plist (F1); без них приложение показывает «Relay не настроен». Ручной запуск `watch` с `testflight=false` собирает ветку без подписи и секретов, как на PR.
 - Job с секретами не запускается на `pull_request`, в том числе из форков; `pull_request_target` не используется.
 - Ни один ключ, сертификат или профиль не коммитится в репозиторий.
 

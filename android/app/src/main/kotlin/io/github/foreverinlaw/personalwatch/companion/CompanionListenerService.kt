@@ -21,6 +21,7 @@ class CompanionListenerService : NotificationListenerService() {
         val uploader = (application as CompanionApp).uploader ?: return
         val posted = sbn.toPostedNotification(appLabel = appLabel(sbn.packageName))
         when (val result = pipeline.process(posted) { activeNotifications.orEmpty().map { it.toActiveNotification() } }) {
+            // Unpaired, PairedRelay refuses the event without a request (TZ F1).
             is PipelineResult.Forward -> uploader.upload(result.event)
             is PipelineResult.Skip -> Log.d(TAG, "skipped ${sbn.key}: ${result.reason}")
         }

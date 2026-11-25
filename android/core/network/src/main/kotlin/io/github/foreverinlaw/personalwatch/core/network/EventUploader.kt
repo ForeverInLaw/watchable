@@ -20,11 +20,11 @@ import kotlin.time.Duration.Companion.seconds
  */
 class EventUploader(
     scope: CoroutineScope,
-    private val send: suspend (NotificationEvent) -> RelayOutcome,
+    private val send: suspend (NotificationEvent) -> RelayOutcome<Unit>,
     /** Picks the actual delay up to the given backoff; full jitter by default. */
     private val jitter: (Duration) -> Duration = { Random.nextLong(it.inWholeMilliseconds + 1).milliseconds },
     /** Called once per event with the last outcome: accepted, rejected, or the retry it gave up on. */
-    private val onFinished: (NotificationEvent, RelayOutcome) -> Unit,
+    private val onFinished: (NotificationEvent, RelayOutcome<Unit>) -> Unit,
 ) {
     private val queue = Channel<NotificationEvent>(Channel.UNLIMITED)
 

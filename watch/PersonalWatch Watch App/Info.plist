@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Build settings from project.yml; RelayConfig reads them. -->
+	<key>RelayURL</key>
+	<string>$(RELAY_URL)</string>
+	<key>PairingSecret</key>
+	<string>$(PAIRING_SECRET)</string>
+</dict>
+</plist>

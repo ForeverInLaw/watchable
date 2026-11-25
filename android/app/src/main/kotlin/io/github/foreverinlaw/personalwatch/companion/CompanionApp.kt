@@ -2,36 +2,46 @@ package io.github.foreverinlaw.personalwatch.companion
 
 import android.app.Application
 import android.util.Log
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import io.github.foreverinlaw.personalwatch.core.network.EventUploader
+import io.github.foreverinlaw.personalwatch.core.network.PairedRelay
 import io.github.foreverinlaw.personalwatch.core.network.RelayClient
+import io.github.foreverinlaw.personalwatch.core.network.RelayOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.time.Instant
 
-/** Holds the app-wide objects the listener service and the screen share. */
+/** Holds the app-wide objects the listener service and the screens share. */
 class CompanionApp : Application() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     val relayStatus = RelayStatus()
 
-    /** Null when the build carries no usable relay URL or token. */
-    val uploader: EventUploader? by lazy {
+    /** Null when the build carries no usable relay URL. */
+    val relay: PairedRelay? by lazy {
         val url = BuildConfig.RELAY_URL.toHttpUrlOrNull() ?: return@lazy null
-        // OkHttp refuses header values outside printable ASCII, which would fail every upload.
-        if (BuildConfig.RELAY_TOKEN.isBlank() || BuildConfig.RELAY_TOKEN.any { it !in ' '..'~' }) return@lazy null
-        val client = RelayClient(url, BuildConfig.RELAY_TOKEN)
+        // Under files/, which data_extraction_rules.xml keeps out of backup and device transfer.
+        val store = PreferenceDataStoreFactory.create(scope = scope) { filesDir.resolve("datastore/pairing.preferences_pb") }
+        PairedRelay(RelayClient(url), store)
+    }
+
+    val uploader: EventUploader? by lazy {
+        val relay = relay ?: return@lazy null
         EventUploader(
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            send = client::postNotification,
+            scope = scope,
+            send = relay::postNotification,
             onFinished = { event, outcome ->
                 // Never log notification text (TZ §7.8).
                 Log.i(TAG, "event ${event.eventId}: $outcome")
-                relayStatus.record(outcome, Instant.now())
+                // An invalid token means unpaired, and the screen hides the last outcome while
+                // unpaired; recorded, it would show up as the last outcome right after pairing.
+                val unpaired = outcome is RelayOutcome.Rejected && outcome.code == "invalid_token"
+                if (!unpaired) relayStatus.record(outcome, Instant.now())
             },
         )
     }
-
-    val isRelayConfigured: Boolean get() = uploader != null
 
     private companion object {
         const val TAG = "CompanionApp"

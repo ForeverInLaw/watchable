@@ -8,6 +8,17 @@
     <string name="relay">Relay</string>
     <string name="relay_configured">Настроен</string>
     <string name="relay_not_configured">Не настроен</string>
+    <string name="pairing">Pairing</string>
+    <string name="pairing_paired">Спарено</string>
+    <string name="pairing_unpaired">Не спарено</string>
+    <string name="pair">Ввести код с часов</string>
+    <string name="repair">Спарить заново</string>
+    <string name="pairing_code">Код с часов</string>
+    <string name="pairing_submit">Спарить</string>
+    <string name="pairing_back">Назад</string>
+    <string name="pairing_invalid_code">Код не подошёл. Введите код, который сейчас на экране часов.</string>
+    <string name="pairing_unreachable">Не удалось связаться с relay. Повторите позже.</string>
+    <string name="pairing_rejected">Relay отклонил запрос. Повторите позже.</string>
     <string name="last_event">Последнее уведомление</string>
     <string name="last_event_none">Ещё не отправлялось</string>
     <string name="last_event_accepted">Принято relay в %1$s</string>
