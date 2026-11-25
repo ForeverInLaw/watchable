@@ -437,7 +437,7 @@ Relay:
 - Опционально: HMAC-SHA256 для BLE и критичных запросов.
   - `X-Timestamp`, `X-Signature`.
   - Окно 5 минут.
-- APNs/FCM токены обновляются через `POST /v1/devices/{id}/push-token`, `204`; `{id}` чужого устройства — `403 forbidden`. Среда APNs одна на relay (`APNS_USE_SANDBOX`, §9.3).
+- APNs/FCM токены обновляются через `POST /v1/devices/{id}/push-token`, `204`; `{id}` чужого устройства — `403 forbidden`; APNs-токен часов должен быть hex, как в `pair/start`, иначе `400 invalid_request`. Среда APNs одна на relay (`APNS_USE_SANDBOX`, §9.3).
 
 ### 5.3 Envelope
 
@@ -1135,7 +1135,7 @@ watch.example.com {
 - TLS 1.2+; HSTS; Caddy.
 - APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600.
 - Device tokens — SHA-256 на сервере.
-- Pairing начинают только часы с pairing-секретом из сборки (§5.2). Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
+- Pairing начинают только часы с pairing-секретом из сборки (§5.2). Остаточный риск: кто получит сборку из TestFlight и расшифрует её, достанет секрет и сможет перехватить pairing. Поэтому сборка не выкладывается в артефакты CI. При утечке сменить `PAIRING_SECRET` в `.env` relay и в GitHub secret, пересобрать часы и спарить заново. Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
 - HMAC для BLE обязателен; для HTTP — опционально.
 - Шифрование notification text at rest:
   - AES-GCM с ключом `DATA_KEY` из env;
