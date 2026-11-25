@@ -99,6 +99,7 @@ class Relay:
     pair_start_parser: BodyParser[PairStartRequest]
     pair_complete_parser: BodyParser[PairCompleteRequest]
     push_token_parser: BodyParser[PushTokenRequest]
+    watch_push_token_parser: BodyParser[PushTokenRequest]
 
 
 def current_relay(request: Request) -> Relay:

@@ -1,9 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Push token request",
-  "description": "Body of POST /v1/devices/{id}/push-token: the device's new APNs or FCM token. {id} must be the device the Bearer token belongs to; the relay answers 204 (docs/TZ.md §5.2).",
+  "description": "Body of POST /v1/devices/{id}/push-token: the device's new APNs or FCM token. {id} must be the device the Bearer token belongs to; the relay answers 204 (docs/TZ.md §5.2). The watch's body must also pass #/$defs/watch.",
   "type": "object",
-  "required": ["push_token"],
+  "required": [
+    "push_token"
+  ],
   "properties": {
     "push_token": {
       "description": "Hex APNs device token for the watch, FCM registration token for the Companion.",
@@ -11,5 +13,16 @@
       "minLength": 1
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "watch": {
+      "description": "The watch sends a hex APNs device token, as in pair/start.",
+      "$ref": "#",
+      "properties": {
+        "push_token": {
+          "$ref": "pair-start-request.schema.json#/properties/apns_token"
+        }
+      }
+    }
+  }
 }

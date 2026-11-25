@@ -16,6 +16,8 @@ from relay.protocol import rfc3339
 from relay.tables import devices, pairing_sessions
 
 PUSH_TOKEN_SCHEMA = "push-token-request.schema.json"
+# The watch body: the token must also be a hex APNs device token.
+WATCH_PUSH_TOKEN_SCHEMA = f"{PUSH_TOKEN_SCHEMA}#/$defs/watch"
 
 
 class DeviceRole(StrEnum):

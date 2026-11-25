@@ -177,6 +177,31 @@ def test_watch_pushes_go_to_its_new_apns_token(
     assert [request.device_token for request in apns.requests] == ["abcdef"]
 
 
+def test_watch_push_token_must_be_hex(
+    client: TestClient, apns: FakeApnsClient, paired: Pair
+) -> None:
+    refused = client.post(
+        f"/v1/devices/{paired.watch_device_id}/push-token",
+        json={"push_token": "a1b2 c3d4"},
+        headers=bearer(paired.watch_token),
+    )
+    post_event(client, paired.android_token)
+
+    assert refused.status_code == 400
+    assert error_of(refused)["code"] == "invalid_request"
+    assert [request.device_token for request in apns.requests] == [PAIR_START["apns_token"]]
+
+
+def test_companion_push_token_is_any_fcm_token(client: TestClient, paired: Pair) -> None:
+    response = client.post(
+        f"/v1/devices/{paired.android_device_id}/push-token",
+        json={"push_token": "fcm:APA91b-token_with:colons"},
+        headers=bearer(paired.android_token),
+    )
+
+    assert response.status_code == 204
+
+
 def test_device_cannot_set_another_devices_push_token(client: TestClient, paired: Pair) -> None:
     response = client.post(
         f"/v1/devices/{paired.watch_device_id}/push-token",

@@ -16,7 +16,7 @@ from relay.api import ApiError, CurrentRelay, Relay, answer_error
 from relay.apns import ApnsSender, ApnsSettings
 from relay.clock import Clock, utc_now
 from relay.database import connect_database, migrate
-from relay.devices import PUSH_TOKEN_SCHEMA, DeviceRegistry
+from relay.devices import PUSH_TOKEN_SCHEMA, WATCH_PUSH_TOKEN_SCHEMA, DeviceRegistry
 from relay.events import EVENT_SCHEMA
 from relay.intake import NotificationIntake
 from relay.pairing import (
@@ -64,6 +64,7 @@ def create_app(
             pair_start_parser=BodyParser(protocol_dir, PAIR_START_SCHEMA),
             pair_complete_parser=BodyParser(protocol_dir, PAIR_COMPLETE_SCHEMA),
             push_token_parser=BodyParser(protocol_dir, PUSH_TOKEN_SCHEMA),
+            watch_push_token_parser=BodyParser(protocol_dir, WATCH_PUSH_TOKEN_SCHEMA),
         )
         yield
         await engine.dispose()
