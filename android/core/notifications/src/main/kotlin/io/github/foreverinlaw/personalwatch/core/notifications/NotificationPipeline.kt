@@ -34,6 +34,7 @@ class NotificationPipeline(
         when {
             posted.packageName == ownPackage -> SkipReason.OWN
             posted.isOngoing -> SkipReason.ONGOING
+            !posted.isClearable -> SkipReason.NOT_CLEARABLE
             posted.category == CATEGORY_CALL -> SkipReason.CALL
             posted.isGroupSummary && activeNotifications().any { it.isChildOf(posted) } -> SkipReason.SUMMARY_WITH_CHILDREN
             else -> null
@@ -110,6 +111,9 @@ enum class SkipReason {
     /** Posted by the Companion itself. */
     OWN,
     ONGOING,
+
+    /** Cannot be dismissed: an app's status while it works in the background, not a message. */
+    NOT_CLEARABLE,
     CALL,
 
     /** The children of the group are shown instead (TZ §4 F2). */

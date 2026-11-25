@@ -70,6 +70,11 @@ class NotificationPipelineTest {
     }
 
     @Test
+    fun `notifications the user cannot dismiss are skipped`() {
+        assertEquals(PipelineResult.Skip(SkipReason.NOT_CLEARABLE), process(mail.copy(isClearable = false)))
+    }
+
+    @Test
     fun `calls are skipped even when the app does not mark them ongoing`() {
         assertEquals(PipelineResult.Skip(SkipReason.CALL), process(mail.copy(category = "call")))
     }
