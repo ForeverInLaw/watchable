@@ -43,7 +43,8 @@ android {
     }
 
     testOptions {
-        unitTests.isReturnDefaultValues = false
+        // Robolectric reads the merged manifest, and with it targetSdk, only with resources included.
+        unitTests.isIncludeAndroidResources = true
     }
 }
 

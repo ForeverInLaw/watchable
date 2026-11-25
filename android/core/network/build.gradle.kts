@@ -8,7 +8,7 @@ kotlin { jvmToolchain(21) }
 dependencies {
     api(project(":core:protocol"))
     api(libs.kotlinx.coroutines.core)
-    implementation(libs.okhttp)
+    api(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

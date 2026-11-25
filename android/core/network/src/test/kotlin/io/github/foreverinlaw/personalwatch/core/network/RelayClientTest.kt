@@ -35,7 +35,7 @@ class RelayClientTest {
     @Before
     fun start() {
         server.start()
-        client = RelayClient(baseUrl = server.url("/").toString(), token = "static-token")
+        client = RelayClient(baseUrl = server.url("/"), token = "static-token")
     }
 
     @After
