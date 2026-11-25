@@ -56,54 +56,52 @@ def test_example_passes_its_schema(example: Path) -> None:
     validator(schema_file_of(example)).validate(load(example))
 
 
-COMPANION_EVENT = load(PROTOCOL / "examples" / "notification-event.json")
+COMPANION_SCHEMA = "notification-event.schema.json"
+WATCH_SCHEMA = "notification-event-watch.schema.json"
+COMPANION_EVENT: dict[str, Any] = load(PROTOCOL / "examples" / "notification-event.json")
+WATCH_EVENT: dict[str, Any] = load(
+    PROTOCOL / "examples" / "notification-event-watch.truncated.json"
+)
+
+
+def without(event: dict[str, Any], key: str) -> dict[str, Any]:
+    return {name: value for name, value in event.items() if name != key}
 
 
 @pytest.mark.parametrize(
-    "event",
+    ("schema_file", "event", "keyword"),
     [
-        COMPANION_EVENT | {"posted_at": "2026-11-24T15:00:00+03:00"},
-        COMPANION_EVENT | {"event_id": "018f"},
-        {key: value for key, value in COMPANION_EVENT.items() if key != "notification_key"},
-        COMPANION_EVENT | {"body_truncated": False},
+        (COMPANION_SCHEMA, COMPANION_EVENT | {"posted_at": "2026-11-24T15:00:00+03:00"}, "pattern"),
+        (COMPANION_SCHEMA, COMPANION_EVENT | {"event_id": "018f"}, "format"),
+        (COMPANION_SCHEMA, without(COMPANION_EVENT, "notification_key"), "required"),
+        (COMPANION_SCHEMA, COMPANION_EVENT | {"body_truncated": False}, "unevaluatedProperties"),
+        (WATCH_SCHEMA, WATCH_EVENT | {"body": "a" * 3001}, "maxLength"),
+        (WATCH_SCHEMA, WATCH_EVENT | {"body": "Привет"}, "minLength"),
+        (WATCH_SCHEMA, WATCH_EVENT | {"body": None}, "type"),
+        (WATCH_SCHEMA, without(WATCH_EVENT, "body_truncated"), "required"),
+        (WATCH_SCHEMA, WATCH_EVENT | {"body_full": "a" * 3001}, "unevaluatedProperties"),
     ],
-    ids=["posted_at not in UTC", "event_id not a UUID", "no notification_key", "unknown field"],
+    ids=[
+        "companion: posted_at not in UTC",
+        "companion: event_id not a UUID",
+        "companion: no notification_key",
+        "companion: unknown field",
+        "watch: body over 3000",
+        "watch: truncated body under 3000",
+        "watch: truncated null body",
+        "watch: no body_truncated",
+        "watch: unknown field",
+    ],
 )
-def test_companion_event_rejects(event: dict[str, Any]) -> None:
-    assert not validator("notification-event.schema.json").is_valid(event)
+def test_schema_rejects(schema_file: str, event: dict[str, Any], keyword: str) -> None:
+    errors = validator(schema_file).iter_errors(event)
+
+    assert keyword in {error.validator for error in errors}
 
 
 def test_companion_event_carries_the_full_body() -> None:
-    event = COMPANION_EVENT | {"body": "a" * 3001}
-
-    validator("notification-event.schema.json").validate(event)
-
-
-WATCH_EVENT = load(PROTOCOL / "examples" / "notification-event-watch.truncated.json")
-
-
-@pytest.mark.parametrize(
-    "event",
-    [
-        WATCH_EVENT | {"body": "a" * 3001},
-        WATCH_EVENT | {"body": "Привет"},
-        WATCH_EVENT | {"body": None},
-        {key: value for key, value in WATCH_EVENT.items() if key != "body_truncated"},
-        WATCH_EVENT | {"body_full": "a" * 3001},
-    ],
-    ids=[
-        "body over 3000",
-        "truncated body under 3000",
-        "truncated null body",
-        "no body_truncated",
-        "unknown field",
-    ],
-)
-def test_watch_event_rejects(event: dict[str, Any]) -> None:
-    assert not validator("notification-event-watch.schema.json").is_valid(event)
+    validator(COMPANION_SCHEMA).validate(COMPANION_EVENT | {"body": "a" * 3001})
 
 
 def test_watch_event_with_short_body_is_not_truncated() -> None:
-    event = WATCH_EVENT | {"body": "Привет", "body_truncated": False}
-
-    validator("notification-event-watch.schema.json").validate(event)
+    validator(WATCH_SCHEMA).validate(WATCH_EVENT | {"body": "Привет", "body_truncated": False})
