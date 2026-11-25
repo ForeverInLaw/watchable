@@ -120,8 +120,10 @@ def start_pairing(client: TestClient, apns_token: str = PAIR_START["apns_token"]
     return started
 
 
-def complete_pairing(client: TestClient, code: str) -> Response:
-    return client.post("/v1/pair/complete", json=PAIR_COMPLETE | {"pairing_code": code})
+def complete_pairing(
+    client: TestClient, code: str, request: dict[str, Any] = PAIR_COMPLETE
+) -> Response:
+    return client.post("/v1/pair/complete", json=request | {"pairing_code": code})
 
 
 def pair(client: TestClient, apns_token: str = PAIR_START["apns_token"]) -> Pair:

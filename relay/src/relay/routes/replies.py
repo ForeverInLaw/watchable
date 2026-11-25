@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request, Response, status
 
 from relay.api import ApiError, CurrentRelay, CurrentWatch, invalid_token, parse_body
-from relay.replies import DuplicateReply, NoCompanion, NotReplyable, UnknownEvent
+from relay.replies import DuplicateReply, NoCompanion, NotReplyable, Undelivered, UnknownEvent
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ async def reply(
     took it. The watch sends each reply once and shows nothing of the outcome (§8.4)."""
     body = await parse_body(request, relay.reply_parser)
     try:
-        result = await relay.replies.send(body, event_id, watch.id)
+        await relay.replies.send(body, event_id, watch.id)
     except UnknownEvent as error:
         raise ApiError(
             status.HTTP_404_NOT_FOUND, "not_found", "No such event", retryable=False
@@ -34,11 +34,11 @@ async def reply(
         ) from error
     except NoCompanion as error:
         raise invalid_token() from error
-    if not result.ok:
+    except Undelivered as error:
         raise ApiError(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "internal_error",
-            f"FCM refused the message: {result.error or result.status}",
-            retryable=False,
-        )
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            error.reason,
+            str(error),
+            retryable=error.retryable,
+        ) from error
     return Response(status_code=status.HTTP_202_ACCEPTED)

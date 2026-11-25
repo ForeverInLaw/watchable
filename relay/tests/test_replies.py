@@ -2,8 +2,11 @@
 
 import json
 import sqlite3
+import uuid
 from typing import Any
 
+import httpx2
+import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
@@ -14,13 +17,19 @@ from tests.conftest import (
     PAIR_COMPLETE,
     Pair,
     bearer,
+    complete_pairing,
     error_of,
     pair,
     post_event,
+    start_pairing,
 )
 from tests.fakes import FakeClock, FakeFcmEndpoint
 
 REPLY: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "reply-request.json")
+# A Companion built without Firebase pairs without an FCM token.
+PAIR_COMPLETE_WITHOUT_FCM: dict[str, Any] = load_json(
+    SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.json"
+)
 
 
 def post_reply(
@@ -173,4 +182,146 @@ def test_a_repeated_reply_id_is_a_duplicate_and_goes_to_fcm_once(
 
     assert response.status_code == 409
     assert error_of(response)["code"] == "duplicate"
+    assert len(fcm.requests) == 1
+
+
+def fcm_error(status: int, error_code: str) -> dict[str, Any]:
+    """An FCM HTTP v1 error body carrying FCM's errorCode in its details."""
+    detail = {
+        "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+        "errorCode": error_code,
+    }
+    return {"error": {"code": status, "status": error_code, "details": [detail]}}
+
+
+def failure_of(settings: RelaySettings) -> tuple[str, str | None, str | None]:
+    """Status, error and completed_at of the one stored reply."""
+    [stored] = stored_replies(settings)
+    return stored["status"], stored["error"], stored["completed_at"]
+
+
+def test_reply_to_a_companion_without_an_fcm_token_fails(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint
+) -> None:
+    started = start_pairing(client)
+    completed = complete_pairing(client, started["pairing_code"], PAIR_COMPLETE_WITHOUT_FCM).json()
+    post_event(client, completed["android_device_token"])
+
+    response = post_reply(client, started["watch_device_token"])
+
+    assert response.status_code == 503
+    assert error_of(response) | {"message": ""} == {
+        "code": "fcm_token_missing",
+        "message": "",
+        "retryable": False,
+    }
+    assert failure_of(settings) == ("failed", "fcm_token_missing", "2026-11-25T12:00:00Z")
+    assert fcm.requests == []
+
+
+def test_an_unregistered_fcm_token_fails_the_reply_and_is_not_used_again(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.status, fcm.body = 404, fcm_error(404, "UNREGISTERED")
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 503
+    assert error_of(response)["code"] == "fcm_rejected"
+    assert error_of(response)["retryable"] is False
+    assert failure_of(settings) == ("failed", "fcm_rejected", "2026-11-25T12:00:00Z")
+
+    another = post_reply(client, paired.watch_token, reply=REPLY | {"reply_id": str(uuid.uuid4())})
+
+    assert error_of(another)["code"] == "fcm_token_missing"
+    assert len(fcm.requests) == 1
+
+
+def test_a_new_fcm_token_after_unregistered_takes_replies_again(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.status, fcm.body = 404, fcm_error(404, "UNREGISTERED")
+    post_reply(client, paired.watch_token)
+    client.post(
+        f"/v1/devices/{paired.android_device_id}/push-token",
+        json={"push_token": "new-fcm-token"},
+        headers=bearer(paired.android_token),
+    )
+    fcm.status, fcm.body = 200, {"name": "projects/watch-app/messages/2"}
+
+    response = post_reply(client, paired.watch_token, reply=REPLY | {"reply_id": str(uuid.uuid4())})
+
+    assert response.status_code == 202
+    assert fcm.messages[-1]["token"] == "new-fcm-token"
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code"),
+    [(429, "QUOTA_EXCEEDED"), (503, "UNAVAILABLE"), (500, "INTERNAL")],
+)
+def test_a_transient_fcm_error_fails_the_reply_and_may_be_retried(
+    client: TestClient,
+    settings: RelaySettings,
+    fcm: FakeFcmEndpoint,
+    paired: Pair,
+    status: int,
+    error_code: str,
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.status, fcm.body = status, fcm_error(status, error_code)
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 503
+    assert error_of(response)["code"] == "fcm_unavailable"
+    assert error_of(response)["retryable"] is True
+    assert failure_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
+
+
+def test_an_unreachable_fcm_fails_the_reply_and_may_be_retried(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.error = httpx2.ConnectError("FCM unreachable")
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 503
+    assert error_of(response)["code"] == "fcm_unavailable"
+    assert error_of(response)["retryable"] is True
+    assert failure_of(settings) == ("failed", "fcm_unavailable", "2026-11-25T12:00:00Z")
+
+
+def test_a_reply_resent_after_a_transient_fcm_error_goes_out_again(
+    client: TestClient, settings: RelaySettings, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.status, fcm.body = 503, fcm_error(503, "UNAVAILABLE")
+    post_reply(client, paired.watch_token)
+    fcm.status, fcm.body = 200, {"name": "projects/watch-app/messages/2"}
+
+    response = post_reply(client, paired.watch_token)
+
+    assert response.status_code == 202
+    assert len(fcm.requests) == 2
+    assert failure_of(settings) == ("queued", None, None)
+
+
+def test_a_reply_resent_after_fcm_rejected_it_is_a_duplicate(
+    client: TestClient, fcm: FakeFcmEndpoint, paired: Pair
+) -> None:
+    post_event(client, paired.android_token)
+    fcm.status, fcm.body = 400, fcm_error(400, "INVALID_ARGUMENT")
+    first = post_reply(client, paired.watch_token)
+
+    response = post_reply(client, paired.watch_token)
+
+    assert error_of(first) | {"message": ""} == {
+        "code": "fcm_rejected",
+        "message": "",
+        "retryable": False,
+    }
+    assert response.status_code == 409
     assert len(fcm.requests) == 1

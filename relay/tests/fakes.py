@@ -93,15 +93,19 @@ class FakeTokens:
 
 class FakeFcmEndpoint:
     """Stands in for the FCM HTTP v1 API behind httpx2.MockTransport: records each request
-    and answers with `status` and `body`, by default as FCM accepts a message."""
+    and answers with `status` and `body`, by default as FCM accepts a message, or, when
+    `error` is set, raises it as the network would."""
 
     def __init__(self) -> None:
         self.status = 200
         self.body: dict[str, Any] = {"name": "projects/watch-app/messages/1"}
+        self.error: Exception | None = None
         self.requests: list[httpx2.Request] = []
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
+        if self.error is not None:
+            raise self.error
         return httpx2.Response(self.status, json=self.body)
 
     @property

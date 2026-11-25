@@ -24,6 +24,8 @@ SEND_URL = "https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
 TTL = "3600s"
 # Envelope v; FCM data holds only strings (§5.3).
 ENVELOPE_VERSION = "1"
+# FCM error codes that a later send can get past (FCM's error code reference).
+TRANSIENT_ERRORS = frozenset({"QUOTA_EXCEEDED", "UNAVAILABLE", "INTERNAL"})
 
 
 class FcmSettings(BaseSettings):
@@ -81,6 +83,20 @@ class FcmResult:
     def ok(self) -> bool:
         return self.status == 200
 
+    @property
+    def retryable(self) -> bool:
+        """FCM is overloaded or failing for now; the same message may go through later."""
+        return self.error in TRANSIENT_ERRORS or self.status == 429 or self.status >= 500
+
+    @property
+    def unregistered(self) -> bool:
+        """The registration token is no longer valid; FCM wants it dropped."""
+        return self.error == "UNREGISTERED"
+
+
+class FcmUnreachable(Exception):
+    """The relay could not reach FCM or Google's token endpoint; nothing was sent."""
+
 
 def envelope(
     type_: str, id_: str, sent_at: datetime, device_id: str, payload: Mapping[str, Any]
@@ -112,18 +128,21 @@ class FcmSender:
     async def send(self, registration_token: str, data: Mapping[str, str]) -> FcmResult:
         """Delivers `data` at high priority: every message so far is one the user waits on.
 
-        Raises httpx2.HTTPError when FCM cannot be reached.
+        Raises FcmUnreachable when FCM or the token endpoint cannot be reached.
         """
         message = {
             "token": registration_token,
             "data": dict(data),
             "android": {"priority": "high", "ttl": TTL},
         }
-        response = await self._http.post(
-            self._url,
-            json={"message": message},
-            headers={"Authorization": f"Bearer {await self._tokens.get()}"},
-        )
+        try:
+            response = await self._http.post(
+                self._url,
+                json={"message": message},
+                headers={"Authorization": f"Bearer {await self._tokens.get()}"},
+            )
+        except (httpx2.HTTPError, google.auth.exceptions.TransportError) as error:
+            raise FcmUnreachable from error
         if response.status_code == 200:
             return FcmResult(status=200, error=None)
         return FcmResult(status=response.status_code, error=error_code(response))

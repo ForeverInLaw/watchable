@@ -112,6 +112,17 @@ class DeviceRegistry:
         async with self._engine.begin() as connection:
             await connection.execute(statement)
 
+    async def drop_push_token(self, device_id: str, push_token: str) -> None:
+        """Forgets a push token the push service called invalid, unless the device has
+        replaced it meanwhile."""
+        statement = (
+            update(devices)
+            .where(devices.c.id == device_id, devices.c.push_token == push_token)
+            .values(push_token=None)
+        )
+        async with self._engine.begin() as connection:
+            await connection.execute(statement)
+
     async def paired_watch(self, android_device_id: str) -> PushTarget | None:
         """The watch the Companion paired with, unless it is revoked or has no push token."""
         query = (
