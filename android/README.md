@@ -25,7 +25,7 @@ Needs JDK 21 and an Android SDK with platform 37.1 (`sdk.dir` in `local.properti
 The relay URL is baked into the build from the gitignored `local.properties`:
 
 ```properties
-relay.url=https://<relay host>
+relay.url=https://watch.but.red
 ```
 
 Without it the app builds and the status screen shows the relay as not configured. A new
