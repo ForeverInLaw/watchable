@@ -43,3 +43,37 @@ deliveries = Table(
     UniqueConstraint("event_id", "watch_device_id"),
     Index("ix_deliveries_status_next_attempt_at", "status", "next_attempt_at"),
 )
+
+devices = Table(
+    "devices",
+    metadata,
+    Column("id", Text, primary_key=True),
+    # A DeviceRole value.
+    Column("role", Text, nullable=False),
+    Column("name", Text),
+    Column("platform", Text, nullable=False),
+    # APNs device token of the watch, FCM registration token of the Companion.
+    Column("push_token", Text),
+    # SHA-256 of the Bearer token; the token itself is never stored.
+    Column("token_hash", Text, nullable=False, unique=True),
+    Column("created_at", Text, nullable=False),
+    Column("last_seen_at", Text),
+    Column("revoked_at", Text),
+)
+
+pairing_sessions = Table(
+    "pairing_sessions",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("watch_device_id", Text, ForeignKey("devices.id"), nullable=False),
+    Column("code_hash", Text, nullable=False),
+    # Wrong codes entered while the session is open; MAX_FAILED_ATTEMPTS closes it.
+    Column("failed_attempts", Integer, nullable=False, server_default="0"),
+    # Set with used_at, once the Companion has entered the code.
+    Column("android_device_id", Text, ForeignKey("devices.id")),
+    Column("created_at", Text, nullable=False),
+    Column("expires_at", Text, nullable=False),
+    Column("used_at", Text),
+    # When a newer pair/start replaced the session or wrong codes burned it.
+    Column("closed_at", Text),
+)
