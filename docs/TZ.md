@@ -220,7 +220,7 @@ BLE не используется для основного потока уве�
 - Watch app сохраняет `watch_device_token` в Keychain и показывает код крупным шрифтом.
 - Активная сессия одна: новый `pair/start` гасит прежнюю, её код больше не принимается. `pair/start` relay принимает не чаще 10 раз в минуту, дальше `429` с `Retry-After`.
 - Пользователь вводит код в Companion.
-- Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов.
+- Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов. Pairing-секрет Companion не нужен.
   - `pairing_code`
   - `platform=android`
   - `fcm_token` — опционально, до FCM в M3
@@ -658,7 +658,7 @@ version(1) | type(1) | flags(1) | length(2 LE) | payload
 - payload: JSON или CBOR;
 - max 4096 байт;
 - chunking при MTU < 200;
-- HMAC-SHA256 с pairing secret;
+- HMAC-SHA256 с ключом, который часы и Companion согласуют при pairing (это не `PAIRING_SECRET` relay из §5.2);
 - sequence number, replay window 32;
 - ack по `tx`.
 
@@ -1034,7 +1034,7 @@ watch/
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| POST | `/v1/pair/start` | watch app создаёт код |
+| POST | `/v1/pair/start` | watch app создаёт код; Bearer — pairing-секрет (§5.2) |
 | GET | `/v1/pair/status` | watch app проверяет, завершён ли pairing |
 | POST | `/v1/pair/complete` | Android подтверждает код |
 | POST | `/v1/devices/{id}/push-token` | обновить APNs/FCM токен |
@@ -1249,7 +1249,7 @@ watch.example.com {
   - Оба macOS-job используют Xcode 26.3 (`DEVELOPER_DIR`): App Store Connect принимает только сборки на SDK 26, а один Xcode гарантирует, что зелёный PR соберётся и при выгрузке.
   - Подпись только в конфигурации Release: `CODE_SIGN_STYLE=Manual`, профили выбираются по UUID, которые CI читает из самих профилей; bundle id нигде, кроме `project.yml`, не повторяется.
   - Watch app объявляет `ITSAppUsesNonExemptEncryption=NO` (только HTTPS), чтобы TestFlight не спрашивал про экспортный контроль на каждой сборке. Пересмотреть, если появится собственное шифрование.
-- Подписывающие секреты — только в GitHub Actions secrets: `DIST_CERT_P12_BASE64` и `DIST_CERT_P12_PASSWORD` (сертификат distribution), `PROFILE_IOS_BASE64` и `PROFILE_WATCH_BASE64` (App Store profiles iOS-обёртки и watch app), `ASC_KEY_P8_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID` (App Store Connect API key), `APPLE_TEAM_ID`.
+- Подписывающие секреты — только в GitHub Actions secrets: `DIST_CERT_P12_BASE64` и `DIST_CERT_P12_PASSWORD` (сертификат distribution), `PROFILE_IOS_BASE64` и `PROFILE_WATCH_BASE64` (App Store profiles iOS-обёртки и watch app), `ASC_KEY_P8_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID` (App Store Connect API key), `APPLE_TEAM_ID`. Там же `PAIRING_SECRET` — тот же, что в `.env` relay; его зашивает в сборку часов WATCH-22 (F1).
 - Job с секретами не запускается на `pull_request`, в том числе из форков; `pull_request_target` не используется.
 - Ни один ключ, сертификат или профиль не коммитится в репозиторий.
 
