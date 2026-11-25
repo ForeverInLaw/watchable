@@ -1,6 +1,7 @@
 """What every route shares: the §5.1 error shape, body parsing and Bearer authentication."""
 
 import json
+import secrets
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Annotated
@@ -88,6 +89,7 @@ class Relay:
     """What the routes use, built once per app run inside its event loop."""
 
     engine: AsyncEngine
+    pairing_secret: bytes
     devices: DeviceRegistry
     pairing: Pairing
     pair_start_limit: RateLimit
@@ -156,3 +158,20 @@ def require_android(device: CurrentDevice) -> Device:
 
 
 CurrentAndroid = Annotated[Device, Depends(require_android)]
+
+
+def require_pairing_secret(
+    relay: CurrentRelay, authorization: Annotated[str, Header()] = ""
+) -> None:
+    """Admits pair/start only with the PAIRING_SECRET the watch build carries."""
+    scheme, _, secret = authorization.partition(" ")
+    # Bytes, because compare_digest refuses str with non-ASCII characters.
+    if scheme.lower() != "bearer" or not secrets.compare_digest(
+        secret.encode(), relay.pairing_secret
+    ):
+        raise ApiError(
+            status.HTTP_401_UNAUTHORIZED,
+            "invalid_pairing_secret",
+            "Pairing secret required",
+            retryable=False,
+        )

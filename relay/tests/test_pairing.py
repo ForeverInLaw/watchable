@@ -2,11 +2,13 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import (
     EVENT,
     PAIR_START,
+    PAIRING_SECRET,
     Pair,
     bearer,
     body_of,
@@ -19,7 +21,7 @@ from tests.fakes import FakeApnsClient, FakeClock
 
 
 def test_start_gives_the_watch_a_code_for_ten_minutes(client: TestClient) -> None:
-    response = client.post("/v1/pair/start", json=PAIR_START)
+    response = client.post("/v1/pair/start", json=PAIR_START, headers=bearer(PAIRING_SECRET))
 
     assert response.status_code == 201
     started = body_of(response, "pair-start-response")
@@ -30,6 +32,33 @@ def pair_status(client: TestClient, pairing_id: str, watch_token: str) -> Any:
     return client.get(
         "/v1/pair/status", params={"pairing_id": pairing_id}, headers=bearer(watch_token)
     )
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, bearer("wrong-secret"), {"Authorization": PAIRING_SECRET}],
+    ids=["no header", "wrong secret", "no bearer scheme"],
+)
+def test_start_without_the_pairing_secret_is_refused(
+    client: TestClient, headers: dict[str, str]
+) -> None:
+    response = client.post("/v1/pair/start", json=PAIR_START, headers=headers)
+
+    assert response.status_code == 401
+    assert error_of(response) == {
+        "code": "invalid_pairing_secret",
+        "message": "Pairing secret required",
+        "retryable": False,
+    }
+
+
+def test_refused_starts_do_not_use_up_the_rate_limit(client: TestClient) -> None:
+    for _ in range(20):
+        client.post("/v1/pair/start", json=PAIR_START, headers=bearer("wrong-secret"))
+
+    response = client.post("/v1/pair/start", json=PAIR_START, headers=bearer(PAIRING_SECRET))
+
+    assert response.status_code == 201
 
 
 def test_watch_learns_the_companion_entered_its_code(client: TestClient) -> None:
@@ -170,9 +199,9 @@ def test_eleventh_start_in_a_minute_is_rate_limited(client: TestClient, clock: F
         start_pairing(client)
         clock.advance(1)
 
-    limited = client.post("/v1/pair/start", json=PAIR_START)
+    limited = client.post("/v1/pair/start", json=PAIR_START, headers=bearer(PAIRING_SECRET))
     clock.advance(50)
-    later = client.post("/v1/pair/start", json=PAIR_START)
+    later = client.post("/v1/pair/start", json=PAIR_START, headers=bearer(PAIRING_SECRET))
 
     assert limited.status_code == 429
     assert error_of(limited)["code"] == "rate_limited"

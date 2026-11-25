@@ -10,7 +10,9 @@ follow §9.
 ## Running locally through a tunnel
 
 The relay reads its settings from the repo-root `.env` (template: `.env.example`):
-the `APNS_*` credentials, `DATABASE_URL` and `PAIRING_TTL_SECONDS`. On startup it
+the `APNS_*` credentials, `PAIRING_SECRET` (at least 32 characters, the same value the
+watch build carries; `openssl rand -base64 32` makes one), `DATABASE_URL` and
+`PAIRING_TTL_SECONDS`. On startup it
 creates the database and applies the migrations. From the repo root:
 
 ```bash
@@ -28,11 +30,12 @@ It prints a `https://<random>.trycloudflare.com` address that changes on every r
 it in `android/local.properties` as `relay.url` and rebuild the Companion
 (`../android/README.md`).
 
-To pair by hand, start a session as the watch would, with the protocol example in place
-of the watch's APNs token:
+To pair by hand, start a session as the watch would, with the `PAIRING_SECRET` value
+from `.env` and the protocol example in place of the watch's APNs token:
 
 ```bash
-curl -s localhost:8000/v1/pair/start -H "Content-Type: application/json" \
+curl -s localhost:8000/v1/pair/start \
+  -H "Authorization: Bearer <PAIRING_SECRET>" -H "Content-Type: application/json" \
   --data @protocol/examples/pair-start-request.json
 ```
 

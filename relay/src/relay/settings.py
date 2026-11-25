@@ -1,8 +1,9 @@
 """Relay configuration from environment variables (template: the repo-root .env.example)."""
 
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import DirectoryPath, PositiveInt
+from pydantic import DirectoryPath, Field, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings
 
 # The repo-root protocol/ directory, next to relay/ in a source checkout.
@@ -13,6 +14,8 @@ class RelaySettings(BaseSettings):
     """Everything the HTTP app needs besides the APNs credentials (ApnsSettings)."""
 
     database_url: str = "sqlite+aiosqlite:///data/relay.db"
+    # Shared with the watch build: only the owner's watch may start pairing (§5.2).
+    pairing_secret: Annotated[SecretStr, Field(min_length=32)]
     # How long a pairing code works (§5.2).
     pairing_ttl_seconds: PositiveInt = 600
     retention_days: PositiveInt = 7

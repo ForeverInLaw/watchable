@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pair complete request",
-  "description": "Body of POST /v1/pair/complete: the Companion enters the code the watch shows (docs/TZ.md F1). Needs no Bearer token.",
+  "description": "Body of POST /v1/pair/complete: the Companion enters the code the watch shows (docs/TZ.md F1). Needs no Bearer token: the code from the watch is the proof.",
   "type": "object",
   "required": ["pairing_code", "platform"],
   "properties": {

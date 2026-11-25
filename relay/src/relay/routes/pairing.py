@@ -2,15 +2,20 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
-from relay.api import ApiError, CurrentDevice, CurrentRelay, parse_body
+from relay.api import ApiError, CurrentDevice, CurrentRelay, parse_body, require_pairing_secret
 from relay.pairing import InvalidPairingCode, PairingExpired
 
 router = APIRouter(prefix="/v1")
 
 
-@router.post("/pair/start", status_code=status.HTTP_201_CREATED)
+# The secret is checked first, so callers without it cannot use up the rate limit.
+@router.post(
+    "/pair/start",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_pairing_secret)],
+)
 async def start_pairing(request: Request, relay: CurrentRelay) -> dict[str, str]:
     """The watch gets its device token and a code to show; the open session closes."""
     retry_after = relay.pair_start_limit.admit()

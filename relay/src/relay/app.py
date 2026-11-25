@@ -53,6 +53,7 @@ def create_app(
         protocol_dir = settings.protocol_dir
         app.state.relay = Relay(
             engine=engine,
+            pairing_secret=settings.pairing_secret.get_secret_value().encode(),
             devices=DeviceRegistry(engine, clock),
             pairing=Pairing(engine, clock, timedelta(seconds=settings.pairing_ttl_seconds)),
             pair_start_limit=RateLimit(PAIR_STARTS_PER_MINUTE, timedelta(minutes=1), clock),

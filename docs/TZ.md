@@ -209,7 +209,7 @@ BLE не используется для основного потока уве�
 
 ### F1. Pairing
 
-- Watch app при первом запуске получает APNs-токен и вызывает `POST /v1/pair/start` без Bearer-токена.
+- Watch app при первом запуске получает APNs-токен и вызывает `POST /v1/pair/start` с pairing-секретом relay в `Authorization: Bearer`. Секрет зашит в сборку часов (GitHub secret) и совпадает с `PAIRING_SECRET` relay; без него relay отвечает `401 invalid_pairing_secret`, и посторонний, знающий URL, не может начать pairing и отозвать устройства.
 - Передаёт: `platform=watchos`, `apns_token` (обязателен), `name` (опционально).
 - Relay создаёт watch-устройство с его токеном и возвращает:
   - `pairing_id`
@@ -220,7 +220,7 @@ BLE не используется для основного потока уве�
 - Watch app сохраняет `watch_device_token` в Keychain и показывает код крупным шрифтом.
 - Активная сессия одна: новый `pair/start` гасит прежнюю, её код больше не принимается. `pair/start` relay принимает не чаще 10 раз в минуту, дальше `429` с `Retry-After`.
 - Пользователь вводит код в Companion.
-- Companion вызывает `POST /v1/pair/complete` без Bearer-токена:
+- Companion вызывает `POST /v1/pair/complete` без Bearer-токена: доказательство — код с экрана часов.
   - `pairing_code`
   - `platform=android`
   - `fcm_token` — опционально, до FCM в M3
@@ -429,8 +429,9 @@ Relay:
 ### 5.2 Аутентификация
 
 - Pairing code: 8 цифр, TTL 10 минут, одноразовый; на сервере только SHA-256.
+- `pair/start` требует pairing-секрет (`PAIRING_SECRET`, не короче 32 символов) в `Authorization: Bearer`; он проверяется до rate limit, поэтому запросы без него лимит не расходуют.
 - Против перебора: одна активная сессия (новый `pair/start` гасит прежнюю), 5 неверных `pair/complete` сжигают её, `pair/start` не чаще 10 раз в минуту на relay.
-- Device token: 32 байта, base64url; хранится на сервере как SHA-256. `pair/start` и `pair/complete` идут без Bearer, остальные эндпоинты — с токеном устройства.
+- Device token: 32 байта, base64url; хранится на сервере как SHA-256. `pair/start` идёт с pairing-секретом, `pair/complete` — без Bearer, остальные эндпоинты — с токеном устройства.
 - `POST /v1/events/notification` принимает только токен спаренного Companion; токен часов, отозванный или неизвестный токен — `401 invalid_token`.
 - При re-pair старые токены инвалидируются: успешный `pair/complete` отзывает все прежние устройства.
 - Опционально: HMAC-SHA256 для BLE и критичных запросов.
@@ -628,6 +629,7 @@ FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 - `400 invalid_request` — не retry.
 - `400 invalid_pairing_code` — код неверный, истёк, использован или сгорел (F1); пользователь вводит код с часов заново.
 - `401 invalid_token` — re-pair.
+- `401 invalid_pairing_secret` — сборка часов несёт не тот pairing-секрет; не retry.
 - `403 forbidden` — не retry.
 - `404 not_found` — не retry.
 - `404 pairing_expired` — сессия pairing закончилась (F1); часы вызывают `pair/start` заново.
@@ -1133,7 +1135,7 @@ watch.example.com {
 - TLS 1.2+; HSTS; Caddy.
 - APNs `.p8`, FCM service account — только на relay; `.gitignore`, permissions 600.
 - Device tokens — SHA-256 на сервере.
-- Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
+- Pairing начинают только часы с pairing-секретом из сборки (§5.2). Pairing code — TTL 10 минут, одноразовый, одна активная сессия, 5 неверных попыток сжигают её, `pair/start` не чаще 10 раз в минуту (§5.2).
 - HMAC для BLE обязателен; для HTTP — опционально.
 - Шифрование notification text at rest:
   - AES-GCM с ключом `DATA_KEY` из env;

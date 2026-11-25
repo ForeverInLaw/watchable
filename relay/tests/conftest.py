@@ -21,6 +21,8 @@ PAIR_START: dict[str, Any] = load_json(SOURCE_PROTOCOL_DIR / "examples" / "pair-
 PAIR_COMPLETE: dict[str, Any] = load_json(
     SOURCE_PROTOCOL_DIR / "examples" / "pair-complete-request.json"
 )
+# The relay's PAIRING_SECRET; the watch build carries the same value.
+PAIRING_SECRET = "pairing-secret-of-at-least-32-chars"
 # Where the fake clock starts.
 START = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
 
@@ -37,7 +39,10 @@ def apns() -> FakeApnsClient:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> RelaySettings:
-    return RelaySettings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'relay.db'}")
+    return RelaySettings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'relay.db'}",
+        pairing_secret=PAIRING_SECRET,
+    )
 
 
 @pytest.fixture
@@ -77,7 +82,11 @@ class Pair:
 
 def start_pairing(client: TestClient, apns_token: str = PAIR_START["apns_token"]) -> dict[str, Any]:
     """The pair-start-response body for a watch with `apns_token`."""
-    response = client.post("/v1/pair/start", json=PAIR_START | {"apns_token": apns_token})
+    response = client.post(
+        "/v1/pair/start",
+        json=PAIR_START | {"apns_token": apns_token},
+        headers=bearer(PAIRING_SECRET),
+    )
     assert response.status_code == 201
     started: dict[str, Any] = response.json()
     return started

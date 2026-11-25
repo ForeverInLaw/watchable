@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pair start request",
-  "description": "Body of POST /v1/pair/start: the watch app asks for a pairing code (docs/TZ.md F1). Needs no Bearer token.",
+  "description": "Body of POST /v1/pair/start: the watch app asks for a pairing code (docs/TZ.md F1). The Bearer token is the relay's PAIRING_SECRET, built into the watch app; without it the relay answers 401 invalid_pairing_secret.",
   "type": "object",
   "required": ["platform", "apns_token"],
   "properties": {
