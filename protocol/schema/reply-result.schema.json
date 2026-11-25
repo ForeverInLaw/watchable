@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Reply result",
-  "description": "Body of POST /v1/replies/{reply_id}/result: what the Companion made of reply.execute (docs/TZ.md §5.6, §7.4). Only the Companion whose event the reply answers sends it, with its device token. The relay answers 204, 404 not_found for a reply_id it does not know for this Companion and 409 duplicate once the reply has a result.",
+  "description": "Body of POST /v1/replies/{reply_id}/result: what the Companion made of reply.execute (docs/TZ.md §5.6, §7.4). Only the Companion whose event the reply answers sends it, with its device token. The relay answers 204, 404 not_found for a reply_id it does not know for this Companion and 409 duplicate once the reply has a result or FCM refused it.",
   "type": "object",
   "required": ["status"],
   "properties": {
