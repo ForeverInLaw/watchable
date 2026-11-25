@@ -20,8 +20,9 @@ from starlette.exceptions import HTTPException
 
 from relay.apns import ApnsSender, ApnsSettings, ApnsUnreachable
 from relay.database import connect_database, migrate
-from relay.events import EventParser
+from relay.events import EVENT_SCHEMA, NotificationEvent
 from relay.intake import NotificationIntake
+from relay.protocol import BodyParser
 from relay.settings import RelaySettings
 from relay.store import EventStore
 
@@ -47,7 +48,7 @@ class Relay:
 
     settings: RelaySettings
     engine: AsyncEngine
-    parser: EventParser
+    event_parser: BodyParser[NotificationEvent]
     intake: NotificationIntake
 
 
@@ -128,7 +129,7 @@ async def healthz(relay: CurrentRelay) -> dict[str, str]:
 async def receive_notification(request: Request, relay: CurrentRelay) -> Response:
     """Stores the event and pushes it to the watch; 202 once APNs accepts the push."""
     try:
-        event = relay.parser.parse(json.loads(await read_body(request)))
+        event = relay.event_parser.parse(json.loads(await read_body(request)))
     # Covers malformed JSON, a body that is not UTF-8 and a schema breach.
     except ValueError as error:
         raise ApiError(
@@ -172,7 +173,7 @@ def create_app(settings: RelaySettings, connect_apns: Callable[[], ApnsSender]) 
         app.state.relay = Relay(
             settings=settings,
             engine=engine,
-            parser=EventParser(settings.protocol_dir),
+            event_parser=BodyParser(settings.protocol_dir, EVENT_SCHEMA),
             intake=NotificationIntake(store, connect_apns(), settings.watch_push_token),
         )
         yield

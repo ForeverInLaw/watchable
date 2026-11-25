@@ -1,11 +1,8 @@
 """Notification events from the Companion (docs/TZ.md §5.4) and the alert each becomes."""
 
-import json
-from pathlib import Path
-from typing import Literal, TypedDict, cast
+from typing import Literal, TypedDict
 
 from relay.apns import AlertPush
-from relay.protocol import schema_validator
 
 EVENT_SCHEMA = "notification-event.schema.json"
 
@@ -34,29 +31,6 @@ class NotificationEvent(TypedDict):
     is_group_summary: bool
     replyable: bool
     actions: list[Action]
-
-
-class InvalidEvent(ValueError):
-    """The body breaks the schema. The message names the rule, never the offending value."""
-
-
-class EventParser:
-    """Checks request bodies against the Notification event schema in protocol/."""
-
-    def __init__(self, protocol_dir: Path) -> None:
-        self._validator = schema_validator(protocol_dir, EVENT_SCHEMA)
-
-    def parse(self, body: object) -> NotificationEvent:
-        error = next(self._validator.iter_errors(body), None)
-        if error is not None:
-            raise InvalidEvent(f"{error.json_path} fails {error.validator}")
-        # JSON escapes can carry a lone surrogate, which neither SQLite nor APNs accepts.
-        try:
-            json.dumps(body, ensure_ascii=False).encode()
-        except UnicodeEncodeError as encode_error:
-            raise InvalidEvent("$ has text that is not valid Unicode") from encode_error
-        # The schema has just proven the shape the TypedDict describes.
-        return cast(NotificationEvent, body)
 
 
 # Between the app and the sender in the alert title, as in "Telegram · Alice".

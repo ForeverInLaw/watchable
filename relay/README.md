@@ -69,7 +69,7 @@ uv run pytest
 ```
 
 Schema changes go into a new Alembic revision in `src/relay/migrations/versions`.
-Autogenerate compares the tables in `store.py` with a database at the latest revision,
+Autogenerate compares the tables in `tables.py` with a database at the latest revision,
 such as the one the relay migrates on startup from the repo root:
 
 ```bash
