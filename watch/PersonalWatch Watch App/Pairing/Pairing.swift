@@ -34,6 +34,7 @@ final class Pairing {
     private let relay = RelayConfig().map { RelayClient(config: $0) }
     private let store = CredentialStore()
     @ObservationIgnored private var pairingTask: Task<Void, Never>?
+    @ObservationIgnored private var pushTokenUpdate: Task<Void, Never>?
 
     nonisolated init() {}
 
@@ -55,9 +56,13 @@ final class Pairing {
     func didReceive(pushToken token: DeviceToken) {
         pushToken = token
         guard let relay else { return }
-        if let credentials {
-            if credentials.apnsToken != token.hex {
-                Task { await updatePushToken(token, of: credentials, relay: relay) }
+        if credentials != nil {
+            // One update at a time, each checked against the credentials as they are by then,
+            // so a slow older update cannot leave the relay on an older token than the Keychain.
+            pushTokenUpdate = Task { [previous = pushTokenUpdate] in
+                await previous?.value
+                guard let credentials, credentials.apnsToken != token.hex else { return }
+                await updatePushToken(token, of: credentials, relay: relay)
             }
         } else if state == .waitingForPushToken {
             startPairing()

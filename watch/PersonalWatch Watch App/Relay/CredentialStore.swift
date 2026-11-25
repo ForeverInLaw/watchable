@@ -29,10 +29,12 @@ struct CredentialStore {
         return try? JSONDecoder().decode(Credentials.self, from: data)
     }
 
-    /// Replaces the stored credentials; false if the Keychain refused them.
+    /// Replaces the stored credentials in place, so a refused write keeps the old ones;
+    /// false if the Keychain refused them.
     func save(_ credentials: Credentials) -> Bool {
         guard let data = try? JSONEncoder().encode(credentials) else { return false }
-        delete()
+        let update = SecItemUpdate(Self.query as CFDictionary, [kSecValueData: data] as CFDictionary)
+        guard update == errSecItemNotFound else { return update == errSecSuccess }
         var item = Self.query
         item[kSecValueData] = data
         item[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
