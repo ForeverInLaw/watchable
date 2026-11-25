@@ -178,9 +178,11 @@ class ReplyStore:
         raise DuplicateReply if known else UnknownReply
 
     async def fail(self, reply_id: str, reason: ReplyError, now: datetime) -> None:
+        """Marks a queued reply as failed; a result the Companion already sent is kept,
+        because it can arrive before FCM's own answer times out."""
         statement = (
             update(replies)
-            .where(replies.c.id == reply_id)
+            .where(replies.c.id == reply_id, replies.c.status == ReplyStatus.QUEUED)
             .values(status=ReplyStatus.FAILED, error=reason, completed_at=rfc3339(now))
         )
         async with self._engine.begin() as connection:

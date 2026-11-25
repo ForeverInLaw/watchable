@@ -1,5 +1,6 @@
 """Replies from the watch: POST /v1/events/{event_id}/reply hands reply.execute to FCM (TZ F3)."""
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -12,7 +13,9 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
+from relay.database import connect_database
 from relay.protocol import load_json, schema_validator
+from relay.replies import ReplyError, ReplyStore
 from relay.settings import SOURCE_PROTOCOL_DIR, RelaySettings
 from tests.conftest import (
     EVENT,
@@ -475,6 +478,20 @@ def test_result_counts_for_a_reply_whose_fcm_answer_was_lost(
 
     assert response.status_code == 204
     assert outcome_of(settings) == ("sent", None, "2026-11-25T12:00:00Z")
+
+
+def test_a_slow_fcm_failure_does_not_overwrite_the_companions_result(
+    client: TestClient, settings: RelaySettings, clock: FakeClock, replied: Pair
+) -> None:
+    # FCM delivered the message and the Companion answered before FCM's own answer timed out.
+    post_result(client, replied.android_token, RESULT_SENT)
+
+    engine = connect_database(settings.database_url)
+    store = ReplyStore(engine)
+    asyncio.run(store.fail(REPLY["reply_id"], ReplyError.FCM_UNAVAILABLE, clock()))
+    asyncio.run(engine.dispose())
+
+    assert outcome_of(settings)[:2] == ("sent", None)
 
 
 def test_a_second_result_is_a_duplicate_and_changes_nothing(
