@@ -424,16 +424,37 @@ Relay:
 
 ### 5.3 Envelope
 
+Envelope оборачивает сообщения в транспортах, где нет пути и токена: FCM и BLE.
+
 ```json
 {
   "v": 1,
   "id": "018f...",
-  "type": "notification.event",
+  "type": "reply.execute",
   "sent_at": "2026-11-24T12:00:00Z",
   "device_id": "018f...",
   "payload": {}
 }
 ```
+
+- `v` — версия протокола; breaking change увеличивает её.
+- `id` — UUID сообщения; получатель по нему отбрасывает повторы.
+- `type` — тип сообщения, например `reply.execute`.
+- `sent_at` — момент отправки, RFC3339 UTC.
+- `device_id` — устройство, с которого пришло действие: часы для `reply.execute` и команд.
+- `payload` — тело по типу, как в §5.4–5.9.
+
+По транспортам:
+
+- **HTTP** — без envelope: тело запроса и ответа — сам объект из §5.4–5.9 или ошибка из §5.1. Поля envelope задают:
+  - `v` — префикс пути `/v1`;
+  - `type` — метод и путь, например `POST /v1/events/notification`;
+  - `device_id` — устройство, которому выдан Bearer-токен; в теле его нет;
+  - `id` — заголовок `Idempotency-Key`; id сущностей (`event_id`, `reply_id`, `command_id`, `sample_id`) остаются в теле;
+  - `sent_at` — не нужен; доменное время лежит в теле (`posted_at`, `sent_at`, `at`).
+- **APNs** — без envelope: формат задаёт Apple (§5.5). Тип пуша задают `apns-push-type` и `category`, а id — `event_id`.
+- **FCM** — envelope в `data`. FCM принимает только строки, поэтому `v` передаётся как `"1"`, а `payload` — как JSON-строка (§9.4).
+- **BLE (v1.1)** — envelope передаётся как payload кадра (§5.11).
 
 ### 5.4 Notification event
 
@@ -509,10 +530,9 @@ Relay:
 }
 ```
 
-FCM-сообщение:
+FCM-сообщение — envelope `reply.execute` (§5.3) с `payload`:
 ```json
 {
-  "type": "reply.execute",
   "reply_id": "018f...",
   "event_id": "018f...",
   "notification_key": "0|com.whatsapp|...",
@@ -1020,7 +1040,14 @@ watch/
   {
     "message": {
       "token": "<fcm_token>",
-      "data": {"type":"reply.execute","payload":"{...}"},
+      "data": {
+        "v": "1",
+        "id": "018f...",
+        "type": "reply.execute",
+        "sent_at": "2026-11-24T12:00:05Z",
+        "device_id": "018f...",
+        "payload": "{...}"
+      },
       "android": {"priority":"high","ttl":"3600s"}
     }
   }
